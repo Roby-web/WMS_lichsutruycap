@@ -1,0 +1,6 @@
+{
+  "name": "Dashboard Thống kê Tần suất Sử dụng",
+  "description": "Dashboard trực quan hóa và phân tích tần suất truy cập, hành vi người dùng, ban chuyên môn và nền tảng theo lịch sử truy cập hệ thống.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
