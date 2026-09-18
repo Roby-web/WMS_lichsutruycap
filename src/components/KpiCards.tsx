@@ -45,9 +45,28 @@ export function KpiCards({ metrics, onSelectAccount, onSelectDepartment }: KpiCa
               <Users className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
-            {metrics.uniqueAccounts}
-            <span className="text-xs font-normal text-slate-400 ml-2">users</span>
+
+          <div className="flex items-baseline justify-between gap-1">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
+                {metrics.uniqueAccounts}
+              </span>
+              <span className="text-sm font-semibold text-slate-400">
+                /{metrics.totalSystemUsers || 268}
+              </span>
+              <span className="text-xs font-normal text-slate-400">users</span>
+            </div>
+            <span className="inline-flex items-center text-xs font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">
+              {metrics.userParticipationRate}%
+            </span>
+          </div>
+
+          {/* Thanh tiến trình tỉ lệ người dùng hoạt động */}
+          <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2.5 overflow-hidden" title={`Tỉ lệ hoạt động: ${metrics.userParticipationRate}% (${metrics.uniqueAccounts}/${metrics.totalSystemUsers || 268} users)`}>
+            <div
+              className="bg-indigo-600 h-1.5 rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(metrics.userParticipationRate, 100)}%` }}
+            />
           </div>
         </div>
 
@@ -76,9 +95,28 @@ export function KpiCards({ metrics, onSelectAccount, onSelectDepartment }: KpiCa
               <Building2 className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
-            {metrics.uniqueDepartments}
-            <span className="text-xs font-normal text-slate-400 ml-2">đơn vị</span>
+
+          <div className="flex items-baseline justify-between gap-1">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
+                {metrics.uniqueDepartments}
+              </span>
+              <span className="text-sm font-semibold text-slate-400">
+                /{metrics.totalSystemDepartments || 24}
+              </span>
+              <span className="text-xs font-normal text-slate-400">ban</span>
+            </div>
+            <span className="inline-flex items-center text-xs font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200">
+              {metrics.departmentParticipationRate}%
+            </span>
+          </div>
+
+          {/* Thanh tiến trình độ phủ ban chuyên môn */}
+          <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2.5 overflow-hidden" title={`Độ phủ ban chuyên môn: ${metrics.departmentParticipationRate}% (${metrics.uniqueDepartments}/${metrics.totalSystemDepartments || 24} ban)`}>
+            <div
+              className="bg-amber-500 h-1.5 rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(metrics.departmentParticipationRate, 100)}%` }}
+            />
           </div>
         </div>
 

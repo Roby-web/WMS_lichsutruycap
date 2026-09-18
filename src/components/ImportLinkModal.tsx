@@ -52,19 +52,61 @@ export function ImportLinkModal({ isOpen, onClose, onApplyData }: ImportLinkModa
     const targetUrl = convertUrlToCsvEndpoint(urlInput);
 
     try {
-      const res = await fetch(targetUrl, {
-        headers: {
-          Accept: 'text/csv, text/plain, */*',
-        },
-      });
+      let text = '';
+      let fetchSuccess = false;
 
-      if (!res.ok) {
-        throw new Error(`Máy chủ phản hồi mã lỗi ${res.status}: ${res.statusText}`);
+      // Attempt 1: Direct fetch
+      try {
+        const res = await fetch(targetUrl, {
+          headers: {
+            Accept: 'text/csv, text/plain, */*',
+          },
+        });
+        if (res.ok) {
+          const rawText = await res.text();
+          if (rawText && !rawText.trim().startsWith('<!DOCTYPE') && !rawText.trim().startsWith('<html')) {
+            text = rawText;
+            fetchSuccess = true;
+          }
+        }
+      } catch (clientErr) {
+        console.warn('Direct fetch failed, falling back to proxy:', clientErr);
       }
 
-      const text = await res.text();
-      if (!text || text.length < 20) {
-        throw new Error('Dữ liệu nhận về trống hoặc không hợp lệ');
+      // Attempt 2: Proxy fetch if direct fetch failed
+      if (!fetchSuccess) {
+        const proxyUrl = `/api/fetch-sheet?url=${encodeURIComponent(targetUrl)}`;
+        const resProxy = await fetch(proxyUrl);
+        if (resProxy.ok) {
+          const rawText = await resProxy.text();
+          if (rawText && !rawText.trim().startsWith('<!DOCTYPE') && !rawText.trim().startsWith('<html')) {
+            text = rawText;
+            fetchSuccess = true;
+          }
+        }
+      }
+
+      // Attempt 3: If still failed and it is Google Sheets, try the export endpoint
+      if (!fetchSuccess && urlInput.includes('docs.google.com/spreadsheets')) {
+        const sheetMatch = urlInput.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+        const gidMatch = urlInput.match(/[#&?]gid=([0-9]+)/);
+        const sheetId = sheetMatch ? sheetMatch[1] : '';
+        const gid = gidMatch ? gidMatch[1] : '0';
+        if (sheetId) {
+          const altUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+          const resAlt = await fetch(`/api/fetch-sheet?url=${encodeURIComponent(altUrl)}`);
+          if (resAlt.ok) {
+            const rawText = await resAlt.text();
+            if (rawText && !rawText.trim().startsWith('<!DOCTYPE') && !rawText.trim().startsWith('<html')) {
+              text = rawText;
+              fetchSuccess = true;
+            }
+          }
+        }
+      }
+
+      if (!fetchSuccess || !text || text.length < 20) {
+        throw new Error('Google Sheet chưa được mở quyền công khai hoặc không thể kết nối. Vui lòng bật chia sẻ "Bất kỳ ai có đường liên kết" trên Google Sheet, hoặc bạn chỉ cần nhấn Ctrl+A, Ctrl+C trên Sheet rồi dán vào tab "Dán Nội Dung CSV".');
       }
 
       // Test parsing
@@ -77,11 +119,7 @@ export function ImportLinkModal({ isOpen, onClose, onApplyData }: ImportLinkModa
       setPreviewRecords(parsed);
     } catch (err: any) {
       console.error('Fetch error:', err);
-      let message = err.message || 'Không thể tải dữ liệu từ liên kết này';
-      if (err.name === 'TypeError' && err.message.includes('fetch')) {
-        message = 'Không thể kết nối (CORS). Nếu là Google Sheets, hãy đảm bảo Sheet đã được chia sẻ "Bất kỳ ai có liên kết" (Anyone with link) hoặc chọn Tệp > Chia sẻ > Xuất bản lên web (Publish to web). Hoặc bạn có thể dán trực tiếp nội dung CSV ở tab bên cạnh.';
-      }
-      setErrorMsg(message);
+      setErrorMsg(err.message || 'Không thể tải dữ liệu từ liên kết này');
     } finally {
       setLoading(false);
     }

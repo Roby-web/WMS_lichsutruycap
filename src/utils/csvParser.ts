@@ -1,10 +1,59 @@
-import { AccessRecord, FilterState, KpiMetrics, AccountStat, DepartmentStat, FeatureStat, PlatformStat, OsStat, HourlyStat, DailyStat } from '../types';
+import {
+  AccessRecord,
+  FilterState,
+  KpiMetrics,
+  AccountStat,
+  DepartmentStat,
+  FeatureStat,
+  PlatformStat,
+  OsStat,
+  HourlyStat,
+  DailyStat,
+  HourlyAverageStat,
+  WeekdayAverageStat,
+  DailyUserFrequencyStat,
+  UserDailyAvgStat,
+  DepartmentDailyAvgStat,
+  TOTAL_SYSTEM_USERS,
+  TOTAL_SYSTEM_DEPARTMENTS,
+} from '../types';
 
 const VIETNAMESE_DAYS = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+
+// Các tài khoản và ban thử nghiệm được loại bỏ mặc định theo yêu cầu
+export const DEFAULT_EXCLUDED_ACCOUNTS = ['wms_bbt', 'wms_truongban', 'wms_phongvien'];
+export const DEFAULT_EXCLUDED_DEPARTMENTS = ['Tech', 'Test WMS'];
+
+export function isDefaultExcludedRecord(record: { account?: string; department?: string }): boolean {
+  const acc = (record.account || '').trim().toLowerCase().replace(/^@/, '');
+  const dept = (record.department || '').trim().toLowerCase();
+
+  const isExcludedAcc = DEFAULT_EXCLUDED_ACCOUNTS.some(
+    (a) => a.toLowerCase() === acc
+  );
+  const isExcludedDept = DEFAULT_EXCLUDED_DEPARTMENTS.some(
+    (d) => d.toLowerCase() === dept
+  );
+
+  return isExcludedAcc || isExcludedDept;
+}
 
 export function parseAccessCsv(csvText: string): AccessRecord[] {
   const lines = csvText.trim().split(/\r?\n/);
   if (lines.length < 2) return [];
+
+  // Determine delimiter from the first few non-empty lines
+  let delimiter = ',';
+  for (let i = 0; i < Math.min(lines.length, 5); i++) {
+    const l = lines[i];
+    if (l.includes('\t')) {
+      delimiter = '\t';
+      break;
+    } else if (l.includes(';') && !l.includes(',')) {
+      delimiter = ';';
+      break;
+    }
+  }
 
   // Parse header
   const records: AccessRecord[] = [];
@@ -13,21 +62,30 @@ export function parseAccessCsv(csvText: string): AccessRecord[] {
     const line = lines[i].trim();
     if (!line) continue;
 
-    // Handle CSV line splitting
-    const parts = parseCsvLine(line);
-    if (parts.length < 9) continue;
+    // Handle CSV / TSV line splitting
+    const parts = parseCsvLine(line, delimiter);
+    if (parts.length < 4) continue; // Minimum needed: account, feature, time, platform
 
-    const stt = parseInt(parts[0], 10) || i;
-    const account = (parts[1] || '').trim();
-    const feature = (parts[2] || '').trim();
-    const rawTimestamp = (parts[3] || '').trim();
-    const platform = (parts[4] || 'WEB').trim().toUpperCase();
-    const os = (parts[5] || 'Unknown').trim();
-    const department = (parts[6] || 'Chưa phân loại').trim();
-    const role = (parts[7] || 'Thành viên').trim();
-    const ip = (parts[8] || '').trim();
+    // If first column is not numeric, it might be that STT is missing
+    let stt = parseInt(parts[0], 10);
+    let offset = 0;
+    if (isNaN(stt)) {
+      stt = i;
+      offset = -1; // Columns shift if no STT
+    }
 
-    // Parse timestamp: "16:30:51 16/09/2026"
+    const account = (parts[1 + offset] || parts[0] || '').trim();
+    const feature = (parts[2 + offset] || '').trim();
+    const rawTimestamp = (parts[3 + offset] || '').trim();
+    const platform = (parts[4 + offset] || 'WEB').trim().toUpperCase();
+    const os = (parts[5 + offset] || 'Windows').trim();
+    const department = (parts[6 + offset] || 'SD').trim();
+    const role = (parts[7 + offset] || 'BBT').trim();
+    const ip = (parts[8 + offset] || '127.0.0.1').trim();
+
+    if (!account) continue;
+
+    // Parse timestamp: supports "HH:mm:ss DD/MM/YYYY", "DD/MM/YYYY HH:mm:ss", "YYYY-MM-DD HH:mm:ss"
     let time = '';
     let date = '';
     let isoDate = '';
@@ -35,18 +93,61 @@ export function parseAccessCsv(csvText: string): AccessRecord[] {
     let dayOfWeek = '';
     let epochMs = 0;
 
-    const timeDateMatch = rawTimestamp.match(/^(\d{2}:\d{2}:\d{2})\s+(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (timeDateMatch) {
-      time = timeDateMatch[1];
-      const day = parseInt(timeDateMatch[2], 10);
-      const month = parseInt(timeDateMatch[3], 10) - 1; // 0-indexed
-      const year = parseInt(timeDateMatch[4], 10);
-      date = `${timeDateMatch[2]}/${timeDateMatch[3]}/${timeDateMatch[4]}`;
+    // Format 1: HH:mm:ss DD/MM/YYYY (or DD/MM/YY)
+    const match1 = rawTimestamp.match(/^(\d{1,2}:\d{2}(?::\d{2})?)\s+(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+    // Format 2: DD/MM/YYYY HH:mm:ss
+    const match2 = rawTimestamp.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\s+(\d{1,2}:\d{2}(?::\d{2})?)$/);
+    // Format 3: YYYY-MM-DD HH:mm:ss
+    const match3 = rawTimestamp.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\s+(\d{1,2}:\d{2}(?::\d{2})?)$/);
+
+    if (match1) {
+      time = match1[1];
+      const day = parseInt(match1[2], 10);
+      const month = parseInt(match1[3], 10) - 1;
+      let year = parseInt(match1[4], 10);
+      if (year < 100) year += 2000;
+
+      date = `${String(day).padStart(2, '0')}/${String(month + 1).padStart(2, '0')}/${year}`;
       isoDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-      const [h, m, s] = time.split(':').map(Number);
-      hour = h;
-      const dObj = new Date(year, month, day, h, m, s);
+      const timeParts = time.split(':').map(Number);
+      hour = timeParts[0] || 0;
+      const m = timeParts[1] || 0;
+      const s = timeParts[2] || 0;
+      const dObj = new Date(year, month, day, hour, m, s);
+      epochMs = dObj.getTime();
+      dayOfWeek = VIETNAMESE_DAYS[dObj.getDay()] || '';
+    } else if (match2) {
+      const day = parseInt(match2[1], 10);
+      const month = parseInt(match2[2], 10) - 1;
+      let year = parseInt(match2[3], 10);
+      if (year < 100) year += 2000;
+      time = match2[4];
+
+      date = `${String(day).padStart(2, '0')}/${String(month + 1).padStart(2, '0')}/${year}`;
+      isoDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+      const timeParts = time.split(':').map(Number);
+      hour = timeParts[0] || 0;
+      const m = timeParts[1] || 0;
+      const s = timeParts[2] || 0;
+      const dObj = new Date(year, month, day, hour, m, s);
+      epochMs = dObj.getTime();
+      dayOfWeek = VIETNAMESE_DAYS[dObj.getDay()] || '';
+    } else if (match3) {
+      const year = parseInt(match3[1], 10);
+      const month = parseInt(match3[2], 10) - 1;
+      const day = parseInt(match3[3], 10);
+      time = match3[4];
+
+      date = `${String(day).padStart(2, '0')}/${String(month + 1).padStart(2, '0')}/${year}`;
+      isoDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+      const timeParts = time.split(':').map(Number);
+      hour = timeParts[0] || 0;
+      const m = timeParts[1] || 0;
+      const s = timeParts[2] || 0;
+      const dObj = new Date(year, month, day, hour, m, s);
       epochMs = dObj.getTime();
       dayOfWeek = VIETNAMESE_DAYS[dObj.getDay()] || '';
     } else {
@@ -77,7 +178,12 @@ export function parseAccessCsv(csvText: string): AccessRecord[] {
   return records;
 }
 
-function parseCsvLine(line: string): string[] {
+function parseCsvLine(line: string, delimiter: string = ','): string[] {
+  // If delimiter is tab, standard split is fast and clean
+  if (delimiter === '\t') {
+    return line.split('\t').map((item) => item.replace(/^["']|["']$/g, '').trim());
+  }
+
   const result: string[] = [];
   let current = '';
   let inQuotes = false;
@@ -91,14 +197,14 @@ function parseCsvLine(line: string): string[] {
       } else {
         inQuotes = !inQuotes;
       }
-    } else if (char === ',' && !inQuotes) {
-      result.push(current);
+    } else if (char === delimiter && !inQuotes) {
+      result.push(current.trim());
       current = '';
     } else {
       current += char;
     }
   }
-  result.push(current);
+  result.push(current.trim());
   return result;
 }
 
@@ -106,6 +212,11 @@ export function filterRecords(records: AccessRecord[], filters: FilterState): Ac
   const searchLower = filters.search.trim().toLowerCase();
 
   return records.filter((r) => {
+    // Mặc định loại bỏ các bản ghi của các acc wms_bbt, wms_truongban, wms_phongvien và ban Tech, Test WMS
+    if (filters.excludeTestAccounts && isDefaultExcludedRecord(r)) {
+      return false;
+    }
+
     // Search query matches account, department, feature, IP, role, os
     if (searchLower) {
       const match =
@@ -130,6 +241,11 @@ export function filterRecords(records: AccessRecord[], filters: FilterState): Ac
 
     // Platform
     if (filters.platform !== 'ALL' && r.platform !== filters.platform) {
+      return false;
+    }
+
+    // Role
+    if (filters.role && filters.role !== 'ALL' && r.role !== filters.role) {
       return false;
     }
 
@@ -164,6 +280,10 @@ export function computeKpiMetrics(records: AccessRecord[]): KpiMetrics {
       totalLogs: 0,
       uniqueAccounts: 0,
       uniqueDepartments: 0,
+      totalSystemUsers: TOTAL_SYSTEM_USERS,
+      totalSystemDepartments: TOTAL_SYSTEM_DEPARTMENTS,
+      userParticipationRate: 0,
+      departmentParticipationRate: 0,
       uniqueIPs: 0,
       webCount: 0,
       appCount: 0,
@@ -260,10 +380,17 @@ export function computeKpiMetrics(records: AccessRecord[]): KpiMetrics {
     }
   }
 
+  const userParticipationRate = Number(((accountCounts.size / TOTAL_SYSTEM_USERS) * 100).toFixed(1));
+  const departmentParticipationRate = Number(((deptCounts.size / TOTAL_SYSTEM_DEPARTMENTS) * 100).toFixed(1));
+
   return {
     totalLogs,
     uniqueAccounts: accountCounts.size,
     uniqueDepartments: deptCounts.size,
+    totalSystemUsers: TOTAL_SYSTEM_USERS,
+    totalSystemDepartments: TOTAL_SYSTEM_DEPARTMENTS,
+    userParticipationRate,
+    departmentParticipationRate,
     uniqueIPs: ipSet.size,
     webCount,
     appCount,
@@ -556,6 +683,273 @@ export function computeDailyStats(records: AccessRecord[]): DailyStat[] {
 
   // Sort chronologically by isoDate
   return result.sort((a, b) => a.isoDate.localeCompare(b.isoDate));
+}
+
+export function computeHourlyAverageStats(records: AccessRecord[]): HourlyAverageStat[] {
+  // Count distinct active dates
+  const dates = new Set<string>();
+  for (const r of records) {
+    if (r.date && r.date !== 'N/A') {
+      dates.add(r.date);
+    }
+  }
+  const totalDays = Math.max(dates.size, 1);
+  const totalLogs = records.length;
+
+  const hours: HourlyAverageStat[] = Array.from({ length: 24 }, (_, i) => ({
+    hour: i,
+    label: `${String(i).padStart(2, '0')}:00`,
+    avgCount: 0,
+    totalCount: 0,
+    web: 0,
+    app: 0,
+    percentage: 0,
+  }));
+
+  for (const r of records) {
+    if (r.hour >= 0 && r.hour < 24) {
+      hours[r.hour].totalCount++;
+      if (r.platform === 'WEB') hours[r.hour].web++;
+      else if (r.platform === 'APP') hours[r.hour].app++;
+    }
+  }
+
+  for (const h of hours) {
+    h.avgCount = Number((h.totalCount / totalDays).toFixed(1));
+    h.percentage = totalLogs > 0 ? Number(((h.totalCount / totalLogs) * 100).toFixed(1)) : 0;
+  }
+
+  return hours;
+}
+
+export function computeWeekdayAverageStats(records: AccessRecord[]): WeekdayAverageStat[] {
+  // Ordered from Thứ Hai (Monday) to Chủ Nhật (Sunday)
+  const weekdaysConfig: { dayName: string; shortName: string; dayIndex: number }[] = [
+    { dayName: 'Thứ Hai', shortName: 'T2', dayIndex: 1 },
+    { dayName: 'Thứ Ba', shortName: 'T3', dayIndex: 2 },
+    { dayName: 'Thứ Tư', shortName: 'T4', dayIndex: 3 },
+    { dayName: 'Thứ Năm', shortName: 'T5', dayIndex: 4 },
+    { dayName: 'Thứ Sáu', shortName: 'T6', dayIndex: 5 },
+    { dayName: 'Thứ Bảy', shortName: 'T7', dayIndex: 6 },
+    { dayName: 'Chủ Nhật', shortName: 'CN', dayIndex: 7 },
+  ];
+
+  const weekdayMap = new Map<
+    string,
+    {
+      totalCount: number;
+      dates: Set<string>;
+      users: Set<string>;
+      web: number;
+      app: number;
+    }
+  >();
+
+  weekdaysConfig.forEach((cfg) => {
+    weekdayMap.set(cfg.dayName, {
+      totalCount: 0,
+      dates: new Set(),
+      users: new Set(),
+      web: 0,
+      app: 0,
+    });
+  });
+
+  const totalLogs = records.length;
+
+  for (const r of records) {
+    if (!r.dayOfWeek || !weekdayMap.has(r.dayOfWeek)) continue;
+    const data = weekdayMap.get(r.dayOfWeek)!;
+    data.totalCount++;
+    if (r.date && r.date !== 'N/A') data.dates.add(r.date);
+    if (r.account) data.users.add(r.account);
+    if (r.platform === 'WEB') data.web++;
+    else if (r.platform === 'APP') data.app++;
+  }
+
+  return weekdaysConfig.map((cfg) => {
+    const data = weekdayMap.get(cfg.dayName)!;
+    const distinctDays = Math.max(data.dates.size, data.totalCount > 0 ? 1 : 0);
+    const avgCount = distinctDays > 0 ? Number((data.totalCount / distinctDays).toFixed(1)) : 0;
+    const percentage = totalLogs > 0 ? Number(((data.totalCount / totalLogs) * 100).toFixed(1)) : 0;
+
+    return {
+      dayIndex: cfg.dayIndex,
+      dayName: cfg.dayName,
+      shortName: cfg.shortName,
+      avgCount,
+      totalCount: data.totalCount,
+      distinctDays: data.dates.size,
+      uniqueUsers: data.users.size,
+      web: data.web,
+      app: data.app,
+      percentage,
+    };
+  });
+}
+
+/**
+ * Tính toán tần suất truy cập trung bình / người / ngày theo từng ngày
+ */
+export function computeDailyUserFrequencyStats(records: AccessRecord[]): DailyUserFrequencyStat[] {
+  const map = new Map<
+    string,
+    {
+      isoDate: string;
+      displayDate: string;
+      dayOfWeek: string;
+      totalLogs: number;
+      users: Set<string>;
+      web: number;
+      app: number;
+    }
+  >();
+
+  for (const r of records) {
+    if (!r.date || r.date === 'N/A') continue;
+
+    if (!map.has(r.date)) {
+      map.set(r.date, {
+        isoDate: r.isoDate,
+        displayDate: `${r.date} (${r.dayOfWeek})`,
+        dayOfWeek: r.dayOfWeek,
+        totalLogs: 0,
+        users: new Set(),
+        web: 0,
+        app: 0,
+      });
+    }
+
+    const item = map.get(r.date)!;
+    item.totalLogs++;
+    if (r.account) item.users.add(r.account);
+    if (r.platform === 'WEB') item.web++;
+    else if (r.platform === 'APP') item.app++;
+  }
+
+  const result: DailyUserFrequencyStat[] = [];
+  for (const [date, data] of map.entries()) {
+    const activeUsers = Math.max(data.users.size, 1);
+    result.push({
+      date,
+      isoDate: data.isoDate,
+      displayDate: data.displayDate,
+      dayOfWeek: data.dayOfWeek,
+      totalLogs: data.totalLogs,
+      activeUsers: data.users.size,
+      avgPerUser: Number((data.totalLogs / activeUsers).toFixed(1)),
+      web: data.web,
+      app: data.app,
+    });
+  }
+
+  // Sắp xếp theo ngày tăng dần (chronological)
+  return result.sort((a, b) => a.isoDate.localeCompare(b.isoDate));
+}
+
+/**
+ * Xếp hạng cá nhân theo tần suất truy cập trung bình / ngày làm việc
+ */
+export function computeUserDailyAvgRanking(records: AccessRecord[]): UserDailyAvgStat[] {
+  const userMap = new Map<
+    string,
+    {
+      department: string;
+      role: string;
+      totalLogs: number;
+      dates: Set<string>;
+      webCount: number;
+      appCount: number;
+    }
+  >();
+
+  for (const r of records) {
+    if (!r.account) continue;
+    if (!userMap.has(r.account)) {
+      userMap.set(r.account, {
+        department: r.department || 'Chưa phân ban',
+        role: r.role || 'Phóng viên',
+        totalLogs: 0,
+        dates: new Set(),
+        webCount: 0,
+        appCount: 0,
+      });
+    }
+    const item = userMap.get(r.account)!;
+    item.totalLogs++;
+    if (r.date && r.date !== 'N/A') item.dates.add(r.date);
+    if (r.platform === 'WEB') item.webCount++;
+    else if (r.platform === 'APP') item.appCount++;
+  }
+
+  const result: UserDailyAvgStat[] = [];
+  for (const [account, d] of userMap.entries()) {
+    const activeDays = Math.max(d.dates.size, 1);
+    result.push({
+      account,
+      department: d.department,
+      role: d.role,
+      totalLogs: d.totalLogs,
+      activeDaysCount: d.dates.size,
+      avgPerDay: Number((d.totalLogs / activeDays).toFixed(1)),
+      webCount: d.webCount,
+      appCount: d.appCount,
+    });
+  }
+
+  return result.sort((a, b) => b.avgPerDay - a.avgPerDay);
+}
+
+/**
+ * Thống kê mức độ truy cập trung bình / người / ngày theo từng Ban
+ */
+export function computeDepartmentDailyAvgStats(records: AccessRecord[]): DepartmentDailyAvgStat[] {
+  const deptMap = new Map<
+    string,
+    {
+      totalLogs: number;
+      users: Set<string>;
+      dates: Set<string>;
+      webCount: number;
+      appCount: number;
+    }
+  >();
+
+  for (const r of records) {
+    if (!r.department) continue;
+    if (!deptMap.has(r.department)) {
+      deptMap.set(r.department, {
+        totalLogs: 0,
+        users: new Set(),
+        dates: new Set(),
+        webCount: 0,
+        appCount: 0,
+      });
+    }
+    const item = deptMap.get(r.department)!;
+    item.totalLogs++;
+    if (r.account) item.users.add(r.account);
+    if (r.date && r.date !== 'N/A') item.dates.add(r.date);
+    if (r.platform === 'WEB') item.webCount++;
+    else if (r.platform === 'APP') item.appCount++;
+  }
+
+  const result: DepartmentDailyAvgStat[] = [];
+  for (const [department, d] of deptMap.entries()) {
+    const userCount = Math.max(d.users.size, 1);
+    const distinctDays = Math.max(d.dates.size, 1);
+    result.push({
+      department,
+      totalLogs: d.totalLogs,
+      userCount: d.users.size,
+      distinctDays: d.dates.size,
+      avgPerUserPerDay: Number((d.totalLogs / (userCount * distinctDays)).toFixed(1)),
+      webCount: d.webCount,
+      appCount: d.appCount,
+    });
+  }
+
+  return result.sort((a, b) => b.avgPerUserPerDay - a.avgPerUserPerDay);
 }
 
 export function exportToCsv(records: AccessRecord[], filename = 'thong_ke_lich_su_truy_cap.csv') {

@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { RAW_ACCESS_CSV } from './data/rawCsv';
 import {
   parseAccessCsv,
   filterRecords,
+  isDefaultExcludedRecord,
   computeKpiMetrics,
   computeAccountStats,
   computeDepartmentStats,
@@ -11,6 +12,11 @@ import {
   computeOsStats,
   computeHourlyStats,
   computeDailyStats,
+  computeHourlyAverageStats,
+  computeWeekdayAverageStats,
+  computeDailyUserFrequencyStats,
+  computeUserDailyAvgRanking,
+  computeDepartmentDailyAvgStats,
 } from './utils/csvParser';
 import { FilterState } from './types';
 import { Header } from './components/Header';
@@ -20,25 +26,40 @@ import { InsightsBanner } from './components/InsightsBanner';
 import { TimeTrendChart } from './components/charts/TimeTrendChart';
 import { AccountRankingChart } from './components/charts/AccountRankingChart';
 import { PlatformFeatureChart } from './components/charts/PlatformFeatureChart';
+import { AverageTrendCharts } from './components/charts/AverageTrendCharts';
+import { UserDailyAverageChart } from './components/charts/UserDailyAverageChart';
 import { HeatmapView } from './components/HeatmapView';
 import { DataTable } from './components/DataTable';
 import { AccountDetailModal } from './components/AccountDetailModal';
 import { ImportLinkModal } from './components/ImportLinkModal';
-import { LayoutDashboard, TableProperties, Award, Flame, Activity } from 'lucide-react';
+import { QuickSyncBar } from './components/QuickSyncBar';
+import { LayoutDashboard, TableProperties, Flame, Activity } from 'lucide-react';
+
+const STORAGE_KEY_CSV = 'access_dashboard_custom_csv_v2';
+const STORAGE_KEY_NAME = 'access_dashboard_custom_name_v2';
+const STORAGE_KEY_EXCLUDE_TEST = 'wms_exclude_test_records_v1';
+
+const getInitialExcludeTest = (): boolean => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY_EXCLUDE_TEST);
+    return saved !== null ? saved === 'true' : true; // Mặc định là true cho mọi lần sau
+  } catch {
+    return true;
+  }
+};
 
 const INITIAL_FILTERS: FilterState = {
   search: '',
   date: 'ALL',
   department: 'ALL',
   platform: 'ALL',
+  role: 'ALL',
   feature: 'ALL',
   os: 'ALL',
   account: 'ALL',
   hourRange: [0, 23],
+  excludeTestAccounts: getInitialExcludeTest(),
 };
-
-const STORAGE_KEY_CSV = 'access_dashboard_custom_csv';
-const STORAGE_KEY_NAME = 'access_dashboard_custom_name';
 
 export default function App() {
   // Active dataset
@@ -62,8 +83,17 @@ export default function App() {
   // Filters
   const [filters, setFilters] = useState<FilterState>(INITIAL_FILTERS);
 
-  // Active Main View Tab: 'overview' | 'table' | 'ranking' | 'heatmap'
-  const [activeTab, setActiveTab] = useState<'overview' | 'table' | 'ranking' | 'heatmap'>('overview');
+  // Lưu cấu hình loại bỏ test vào localStorage để áp dụng mặc định cho các lần sau
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_EXCLUDE_TEST, String(filters.excludeTestAccounts));
+    } catch {
+      // ignore
+    }
+  }, [filters.excludeTestAccounts]);
+
+  // Active Main View Tab: 'overview' | 'table' | 'heatmap' (bỏ tab ranking theo yêu cầu)
+  const [activeTab, setActiveTab] = useState<'overview' | 'table' | 'heatmap'>('overview');
 
   // Account Modal
   const [modalAccount, setModalAccount] = useState<string | null>(null);
@@ -76,29 +106,78 @@ export default function App() {
     return parseAccessCsv(csvText);
   }, [csvText]);
 
-  // Available filter options extracted from dataset
-  const { availableDates, availableDepartments, availableFeatures } = useMemo(() => {
-    const dates = new Set<string>();
+  // Tập dữ liệu cơ sở: Khi excludeTestAccounts = true (mặc định), tự động loại bỏ các tài khoản & ban test
+  const baseRecords = useMemo(() => {
+    if (!filters.excludeTestAccounts) return allRecords;
+    return allRecords.filter((r) => !isDefaultExcludedRecord(r));
+  }, [allRecords, filters.excludeTestAccounts]);
+
+  const excludedTestCount = useMemo(() => {
+    return allRecords.length - baseRecords.length;
+  }, [allRecords, baseRecords]);
+
+  // Cấp 1: Danh sách tất cả Vai trò
+  const availableRoles = useMemo(() => {
+    const roles = new Set<string>();
+    baseRecords.forEach((r) => {
+      if (r.role) roles.add(r.role);
+    });
+    return Array.from(roles).sort();
+  }, [baseRecords]);
+
+  // Cấp 2: Danh sách Ban phụ thuộc vào Vai trò đang chọn
+  const availableDepartments = useMemo(() => {
     const depts = new Set<string>();
+    baseRecords.forEach((r) => {
+      const roleMatch = filters.role === 'ALL' || r.role === filters.role;
+      if (roleMatch && r.department) {
+        depts.add(r.department);
+      }
+    });
+    return Array.from(depts).sort();
+  }, [baseRecords, filters.role]);
+
+  // Cấp 3: Danh sách Từng Người phụ thuộc vào Cấp 1 (Vai trò) và Cấp 2 (Ban)
+  const availableAccounts = useMemo(() => {
+    const map = new Map<string, { account: string; department: string; role: string; count: number }>();
+    baseRecords.forEach((r) => {
+      const roleMatch = filters.role === 'ALL' || r.role === filters.role;
+      const deptMatch = filters.department === 'ALL' || r.department === filters.department;
+      if (roleMatch && deptMatch && r.account) {
+        if (!map.has(r.account)) {
+          map.set(r.account, {
+            account: r.account,
+            department: r.department,
+            role: r.role,
+            count: 0,
+          });
+        }
+        map.get(r.account)!.count++;
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.account.localeCompare(b.account));
+  }, [baseRecords, filters.role, filters.department]);
+
+  // Các tùy chọn phụ: Ngày và Chức năng
+  const { availableDates, availableFeatures } = useMemo(() => {
+    const dates = new Set<string>();
     const features = new Set<string>();
 
-    allRecords.forEach((r) => {
+    baseRecords.forEach((r) => {
       if (r.date && r.date !== 'N/A') dates.add(r.date);
-      if (r.department) depts.add(r.department);
       if (r.feature) features.add(r.feature);
     });
 
     return {
       availableDates: Array.from(dates),
-      availableDepartments: Array.from(depts).sort(),
       availableFeatures: Array.from(features).sort(),
     };
-  }, [allRecords]);
+  }, [baseRecords]);
 
   // Filtered records
   const filteredRecords = useMemo(() => {
-    return filterRecords(allRecords, filters);
-  }, [allRecords, filters]);
+    return filterRecords(baseRecords, filters);
+  }, [baseRecords, filters]);
 
   // Computed metrics and aggregates
   const kpiMetrics = useMemo(() => computeKpiMetrics(filteredRecords), [filteredRecords]);
@@ -110,6 +189,21 @@ export default function App() {
   const hourlyData = useMemo(() => computeHourlyStats(filteredRecords), [filteredRecords]);
   const dailyData = useMemo(() => computeDailyStats(filteredRecords), [filteredRecords]);
 
+  // Biểu đồ Trung bình
+  const hourlyAvgData = useMemo(() => computeHourlyAverageStats(filteredRecords), [filteredRecords]);
+  const weekdayAvgData = useMemo(() => computeWeekdayAverageStats(filteredRecords), [filteredRecords]);
+  const dailyUserAvgData = useMemo(() => computeDailyUserFrequencyStats(filteredRecords), [filteredRecords]);
+  const userDailyRanking = useMemo(() => computeUserDailyAvgRanking(filteredRecords), [filteredRecords]);
+  const departmentDailyAvg = useMemo(() => computeDepartmentDailyAvgStats(filteredRecords), [filteredRecords]);
+
+  const totalDays = useMemo(() => {
+    const dates = new Set<string>();
+    filteredRecords.forEach((r) => {
+      if (r.date && r.date !== 'N/A') dates.add(r.date);
+    });
+    return Math.max(dates.size, 1);
+  }, [filteredRecords]);
+
   // Modal data for specific account
   const modalAccountStat = useMemo(() => {
     if (!modalAccount) return undefined;
@@ -118,14 +212,17 @@ export default function App() {
 
   const modalUserRecords = useMemo(() => {
     if (!modalAccount) return [];
-    return allRecords.filter((r) => r.account === modalAccount);
-  }, [modalAccount, allRecords]);
+    return baseRecords.filter((r) => r.account === modalAccount);
+  }, [modalAccount, baseRecords]);
 
   // Handlers
   const handleFileUpload = (newCsv: string, fileName: string) => {
     setCsvText(newCsv);
     setActiveFileName(fileName);
-    setFilters(INITIAL_FILTERS);
+    setFilters((prev) => ({
+      ...INITIAL_FILTERS,
+      excludeTestAccounts: prev.excludeTestAccounts, // Giữ nguyên tùy chọn loại bỏ test
+    }));
     try {
       localStorage.setItem(STORAGE_KEY_CSV, newCsv);
       localStorage.setItem(STORAGE_KEY_NAME, fileName);
@@ -137,7 +234,10 @@ export default function App() {
   const handleResetData = () => {
     setCsvText(RAW_ACCESS_CSV);
     setActiveFileName('Lich_su_truy_cap_487_records.csv');
-    setFilters(INITIAL_FILTERS);
+    setFilters((prev) => ({
+      ...INITIAL_FILTERS,
+      excludeTestAccounts: prev.excludeTestAccounts, // Giữ nguyên tùy chọn loại bỏ test
+    }));
     try {
       localStorage.removeItem(STORAGE_KEY_CSV);
       localStorage.removeItem(STORAGE_KEY_NAME);
@@ -175,6 +275,7 @@ export default function App() {
     filters.date !== 'ALL' ||
     filters.department !== 'ALL' ||
     filters.platform !== 'ALL' ||
+    filters.role !== 'ALL' ||
     filters.feature !== 'ALL' ||
     filters.account !== 'ALL' ||
     filters.hourRange[0] !== 0 ||
@@ -184,7 +285,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 flex flex-col font-['Plus_Jakarta_Sans',sans-serif]">
       {/* Top App Header */}
       <Header
-        recordsCount={allRecords.length}
+        recordsCount={baseRecords.length}
         filteredCount={filteredRecords.length}
         isFiltered={isFiltered}
         onFileUpload={handleFileUpload}
@@ -196,14 +297,31 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {/* KPI Metrics Summary */}
+        {/* Fast Sync Bar for Google Sheets */}
+        <QuickSyncBar onApplyData={handleFileUpload} currentCount={baseRecords.length} />
+
+        {/* 1. Bộ Lọc Phân Cấp (Vai trò -> Ban -> Người) ĐẶT TRÊN CÙNG THEO YÊU CẦU */}
+        <FilterBar
+          filters={filters}
+          onFilterChange={setFilters}
+          availableDates={availableDates}
+          availableDepartments={availableDepartments}
+          availableRoles={availableRoles}
+          availableAccounts={availableAccounts}
+          availableFeatures={availableFeatures}
+          totalCount={baseRecords.length}
+          filteredCount={filteredRecords.length}
+          excludedTestCount={excludedTestCount}
+        />
+
+        {/* 2. KPI Metrics Summary (Tự động cập nhật theo bộ lọc) */}
         <KpiCards
           metrics={kpiMetrics}
           onSelectAccount={handleSelectAccount}
           onSelectDepartment={handleSelectDepartment}
         />
 
-        {/* Analytical Insights Highlights */}
+        {/* 3. Analytical Insights Highlights */}
         <InsightsBanner
           metrics={kpiMetrics}
           topAccounts={accountStats}
@@ -212,18 +330,7 @@ export default function App() {
           onSelectDept={handleSelectDepartment}
         />
 
-        {/* Global Filter Bar */}
-        <FilterBar
-          filters={filters}
-          onFilterChange={setFilters}
-          availableDates={availableDates}
-          availableDepartments={availableDepartments}
-          availableFeatures={availableFeatures}
-          totalCount={allRecords.length}
-          filteredCount={filteredRecords.length}
-        />
-
-        {/* Navigation Tabs */}
+        {/* Navigation Tabs (Đã bỏ tab "Xếp Hạng & Ban Biên Tập") */}
         <div className="border-b border-slate-200 flex items-center justify-between gap-4 overflow-x-auto">
           <nav className="flex space-x-2 sm:space-x-4">
             <button
@@ -236,18 +343,6 @@ export default function App() {
             >
               <LayoutDashboard className="w-4 h-4" />
               <span>Tổng Quan & Biểu Đồ</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('ranking')}
-              className={`py-2.5 px-3.5 border-b-2 font-semibold text-xs sm:text-sm flex items-center gap-2 cursor-pointer transition-colors ${
-                activeTab === 'ranking'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              }`}
-            >
-              <Award className="w-4 h-4" />
-              <span>Xếp Hạng & Ban Biên Tập</span>
             </button>
 
             <button
@@ -279,6 +374,22 @@ export default function App() {
         {/* Tab 1: Overview Dashboard */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
+            {/* 1. Biểu đồ Bổ Sung: Tần Suất Trung Bình / Người / Ngày (Theo yêu cầu) */}
+            <UserDailyAverageChart
+              dailyUserAvgData={dailyUserAvgData}
+              userDailyRanking={userDailyRanking}
+              departmentDailyAvg={departmentDailyAvg}
+              onSelectAccount={handleSelectAccount}
+              onSelectDepartment={handleSelectDepartment}
+            />
+
+            {/* 2. Biểu đồ Trung bình trong ngày (từng giờ) & Trung bình trong tuần (từng thứ) */}
+            <AverageTrendCharts
+              hourlyAvgData={hourlyAvgData}
+              weekdayAvgData={weekdayAvgData}
+              totalDays={totalDays}
+            />
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Timeline Trends */}
               <TimeTrendChart
@@ -319,106 +430,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Tab 2: Ranking & Departments */}
-        {activeTab === 'ranking' && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <AccountRankingChart
-                accountStats={accountStats}
-                departmentStats={departmentStats}
-                onSelectAccount={handleSelectAccount}
-                onSelectDepartment={handleSelectDepartment}
-              />
-              <PlatformFeatureChart
-                featureStats={featureStats}
-                platformStats={platformStats}
-                osStats={osStats}
-                onSelectFeature={handleSelectFeature}
-                onSelectPlatform={handleSelectPlatform}
-              />
-            </div>
-
-            {/* Leaderboard Table */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-5">
-              <h3 className="text-base font-bold text-slate-900 mb-1">
-                Bảng Tổng Hợp Tần Suất Theo Từng Tài Khoản ({accountStats.length} tài khoản)
-              </h3>
-              <p className="text-xs text-slate-500 mb-4">
-                Chi tiết tỷ trọng sử dụng, nền tảng yêu thích và ban chuyên môn tương ứng
-              </p>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-semibold uppercase tracking-wider text-[11px]">
-                      <th className="py-2.5 px-3">Hạng</th>
-                      <th className="py-2.5 px-3">Tài Khoản</th>
-                      <th className="py-2.5 px-3">Số Lượt Truy Cập</th>
-                      <th className="py-2.5 px-3">Tỷ Trọng (%)</th>
-                      <th className="py-2.5 px-3">Ban Phụ Trách</th>
-                      <th className="py-2.5 px-3">Nền Tảng / HĐH</th>
-                      <th className="py-2.5 px-3">Số Ngày Hoạt Động</th>
-                      <th className="py-2.5 px-3 text-right">Chi Tiết</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {accountStats.map((acc, index) => (
-                      <tr key={acc.account} className="hover:bg-slate-50 transition-colors">
-                        <td className="py-2.5 px-3 font-semibold text-slate-500">
-                          {index === 0 && '🥇'}
-                          {index === 1 && '🥈'}
-                          {index === 2 && '🥉'}
-                          {index > 2 && `#${index + 1}`}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <button
-                            onClick={() => handleSelectAccount(acc.account)}
-                            className="font-bold text-blue-600 hover:underline cursor-pointer"
-                          >
-                            @{acc.account}
-                          </button>
-                        </td>
-                        <td className="py-2.5 px-3 font-bold text-slate-900">
-                          {acc.count} lượt
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-16 bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                              <div
-                                className="bg-blue-600 h-1.5 rounded-full"
-                                style={{ width: `${Math.min(acc.percentage * 4, 100)}%` }}
-                              />
-                            </div>
-                            <span className="text-slate-600 font-medium">{acc.percentage}%</span>
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-700">
-                          {acc.departments.join(', ')}
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-600">
-                          <span className="font-medium text-slate-800">{acc.primaryPlatform}</span> ({acc.primaryOs})
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-600">
-                          {acc.daysActive.length} ngày
-                        </td>
-                        <td className="py-2.5 px-3 text-right">
-                          <button
-                            onClick={() => handleSelectAccount(acc.account)}
-                            className="px-2.5 py-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-50 rounded transition-colors cursor-pointer"
-                          >
-                            Xem hồ sơ
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Tab 3: Heatmap Matrix */}
+        {/* Tab 2: Heatmap Matrix */}
         {activeTab === 'heatmap' && (
           <div className="space-y-6">
             <HeatmapView records={filteredRecords} />
@@ -430,7 +442,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Tab 4: Detailed Data Table */}
+        {/* Tab 3: Detailed Data Table */}
         {activeTab === 'table' && (
           <div className="space-y-6">
             <DataTable

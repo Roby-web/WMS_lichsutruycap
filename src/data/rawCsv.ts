@@ -485,4 +485,6 @@ export const RAW_ACCESS_CSV = `STT,Tài khoản,Chức năng,Thời gian,Nền t
 484,hoanganh,Story,08:18:08 12/09/2026,APP,iOS,Giải trí,Trưởng/Phó ban,10.1.26.8
 485,hoanganh,Story,07:47:36 12/09/2026,APP,iOS,Giải trí,Trưởng/Phó ban,10.1.26.8
 486,xuantuyen,Story,07:12:01 12/09/2026,WEB,Linux,Sức khỏe,Trưởng/Phó ban,10.94.26.9
-487,minhkha,Story,06:36:42 12/09/2026,APP,iOS,Thể thao,Trưởng/Phó ban,10.1.26.8`;
+487,minhkha,Story,06:36:42 12/09/2026,APP,iOS,Thể thao,Trưởng/Phó ban,10.1.26.8
+488,nguyenhai,Story,14:34:06 16/09/2026,WEB,Windows,SD,BBT,172.30.127.114
+489,kienhuy,Story,06:08:54 15/09/2026,WEB,MacOS,SD,BBT,10.94.26.9`;
