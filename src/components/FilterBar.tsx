@@ -13,8 +13,10 @@ import {
   Sparkles,
   ShieldCheck,
   ShieldAlert,
+  Clock,
 } from 'lucide-react';
-import { FilterState } from '../types';
+import { FilterState, TimePreset } from '../types';
+import { PresetPeriods, formatToIso } from '../utils/dateRanges';
 
 interface AvailableAccountItem {
   account: string;
@@ -34,6 +36,8 @@ interface FilterBarProps {
   totalCount: number;
   filteredCount: number;
   excludedTestCount?: number;
+  anchorDate?: Date;
+  presetPeriods?: PresetPeriods;
 }
 
 export const FilterBar: React.FC<FilterBarProps> = ({
@@ -47,9 +51,12 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   totalCount,
   filteredCount,
   excludedTestCount = 0,
+  anchorDate,
+  presetPeriods,
 }) => {
   const isFiltered =
     Boolean(filters.search.trim()) ||
+    filters.timePreset !== 'today' ||
     filters.date !== 'ALL' ||
     filters.department !== 'ALL' ||
     filters.platform !== 'ALL' ||
@@ -91,6 +98,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   const handleReset = () => {
     onFilterChange({
       search: '',
+      timePreset: 'today', // Mặc định hôm nay active
+      customRange: {
+        startDate: '',
+        endDate: '',
+      },
       date: 'ALL',
       department: 'ALL',
       platform: 'ALL',
@@ -159,7 +171,157 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         </label>
       </div>
 
-      {/* 1. Phân cấp lọc 3 cấp: Vai trò ➔ Ban ➔ Người */}
+      {/* 1. Mốc Thời Gian Phân Tích (Hôm nay: mặc định, Hôm qua, Tuần này, Tuần trước, Tháng này, Tháng trước, Khoảng thời gian) */}
+      <div className="bg-slate-50/90 rounded-xl p-3 sm:p-4 border border-slate-200/90 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md bg-blue-600 text-white flex items-center justify-center shadow-xs">
+              <Calendar className="w-3.5 h-3.5" />
+            </div>
+            <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+              Mốc Thời Gian Phân Tích
+            </span>
+          </div>
+
+          {presetPeriods && (
+            <div className="text-[11px] text-slate-600 bg-white px-2.5 py-1 rounded-md border border-slate-200 flex items-center gap-1.5 flex-wrap">
+              <span className="text-slate-400">Đang xem:</span>
+              <strong className="text-blue-700 font-semibold">{presetPeriods.current.label}</strong>
+              <span className="text-slate-300">|</span>
+              <span className="text-slate-400">Cùng kỳ so sánh:</span>
+              <span className="text-slate-700 font-medium">{presetPeriods.previous.label}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Danh sách các nút mốc thời gian */}
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          {[
+            { id: 'today', label: 'Hôm nay', badge: 'Mặc định' },
+            { id: 'yesterday', label: 'Hôm qua' },
+            { id: 'this_week', label: 'Tuần này' },
+            { id: 'last_week', label: 'Tuần trước' },
+            { id: 'this_month', label: 'Tháng này' },
+            { id: 'last_month', label: 'Tháng trước' },
+            { id: 'custom', label: 'Khoảng thời gian (tùy chọn)' },
+            { id: 'all', label: 'Tất cả' },
+          ].map((preset) => {
+            const isActive = filters.timePreset === preset.id;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => {
+                  onFilterChange({
+                    ...filters,
+                    timePreset: preset.id as TimePreset,
+                    date: 'ALL',
+                  });
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  isActive
+                    ? 'bg-blue-600 text-white shadow-xs ring-2 ring-blue-500/20 font-bold'
+                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 hover:border-slate-300'
+                }`}
+              >
+                <span>{preset.label}</span>
+                {preset.badge && !isActive && (
+                  <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                    {preset.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Khoảng thời gian: chọn từ ngày tới ngày */}
+        {filters.timePreset === 'custom' && (
+          <div className="bg-white rounded-lg p-3 border border-blue-200 shadow-2xs flex flex-wrap items-center gap-3 text-xs">
+            <span className="font-semibold text-slate-700">Chọn khoảng ngày:</span>
+            <div className="flex items-center gap-2">
+              <label className="text-slate-500 text-[11px]">Từ ngày:</label>
+              <input
+                type="date"
+                value={filters.customRange.startDate || (anchorDate ? formatToIso(anchorDate) : '')}
+                onChange={(e) => {
+                  const newStart = e.target.value;
+                  const newEnd =
+                    filters.customRange.endDate && filters.customRange.endDate >= newStart
+                      ? filters.customRange.endDate
+                      : newStart;
+                  onFilterChange({
+                    ...filters,
+                    customRange: {
+                      startDate: newStart,
+                      endDate: newEnd,
+                    },
+                  });
+                }}
+                className="px-2.5 py-1.5 rounded border border-slate-300 text-xs font-medium text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="text-slate-500 text-[11px]">Đến ngày:</label>
+              <input
+                type="date"
+                value={filters.customRange.endDate || (anchorDate ? formatToIso(anchorDate) : '')}
+                min={filters.customRange.startDate}
+                onChange={(e) => {
+                  onFilterChange({
+                    ...filters,
+                    customRange: {
+                      startDate: filters.customRange.startDate || e.target.value,
+                      endDate: e.target.value,
+                    },
+                  });
+                }}
+                className="px-2.5 py-1.5 rounded border border-slate-300 text-xs font-medium text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              />
+            </div>
+
+            {/* Quick shortcuts for custom range */}
+            <div className="flex items-center gap-1.5 ml-auto text-[11px]">
+              <span className="text-slate-400">Gợi ý nhanh:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!anchorDate) return;
+                  const endIso = formatToIso(anchorDate);
+                  const startD = new Date(anchorDate);
+                  startD.setDate(startD.getDate() - 2);
+                  onFilterChange({
+                    ...filters,
+                    customRange: { startDate: formatToIso(startD), endDate: endIso },
+                  });
+                }}
+                className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 font-medium cursor-pointer"
+              >
+                3 ngày gần nhất
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!anchorDate) return;
+                  const endIso = formatToIso(anchorDate);
+                  const startD = new Date(anchorDate);
+                  startD.setDate(startD.getDate() - 6);
+                  onFilterChange({
+                    ...filters,
+                    customRange: { startDate: formatToIso(startD), endDate: endIso },
+                  });
+                }}
+                className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 font-medium cursor-pointer"
+              >
+                7 ngày gần nhất
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 2. Phân cấp lọc 3 cấp: Vai trò ➔ Ban ➔ Người */}
       <div className="bg-slate-50/80 rounded-xl p-3 sm:p-4 border border-slate-200/80">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2">

@@ -18,6 +18,7 @@ import {
   computeUserDailyAvgRanking,
   computeDepartmentDailyAvgStats,
 } from './utils/csvParser';
+import { getAnchorDate, resolvePresetPeriods } from './utils/dateRanges';
 import { FilterState } from './types';
 import { Header } from './components/Header';
 import { KpiCards } from './components/KpiCards';
@@ -50,6 +51,11 @@ const getInitialExcludeTest = (): boolean => {
 
 const INITIAL_FILTERS: FilterState = {
   search: '',
+  timePreset: 'today', // Hôm nay: mặc định active theo yêu cầu
+  customRange: {
+    startDate: '',
+    endDate: '',
+  },
   date: 'ALL',
   department: 'ALL',
   platform: 'ALL',
@@ -174,13 +180,34 @@ export default function App() {
     };
   }, [baseRecords]);
 
-  // Filtered records
-  const filteredRecords = useMemo(() => {
-    return filterRecords(baseRecords, filters);
-  }, [baseRecords, filters]);
+  // Mốc thời gian tham chiếu dựa trên dữ liệu thực tế (hoặc ngày hiện tại)
+  const anchorDate = useMemo(() => {
+    return getAnchorDate(baseRecords);
+  }, [baseRecords]);
 
-  // Computed metrics and aggregates
-  const kpiMetrics = useMemo(() => computeKpiMetrics(filteredRecords), [filteredRecords]);
+  // Giải quyết khoảng thời gian hiện tại và cùng kỳ trước dựa trên Preset được chọn
+  const presetPeriods = useMemo(() => {
+    return resolvePresetPeriods(filters.timePreset, anchorDate, filters.customRange);
+  }, [filters.timePreset, anchorDate, filters.customRange]);
+
+  // Filtered records trong kỳ đang chọn
+  const filteredRecords = useMemo(() => {
+    return filterRecords(baseRecords, filters, presetPeriods.current);
+  }, [baseRecords, filters, presetPeriods.current]);
+
+  // Dữ liệu cùng kỳ trước đó (áp dụng cùng các điều kiện vai trò, ban, tài khoản, v.v. để so sánh công bằng)
+  const previousPeriodFilteredRecords = useMemo(() => {
+    return filterRecords(baseRecords, filters, presetPeriods.previous);
+  }, [baseRecords, filters, presetPeriods.previous]);
+
+  // Computed metrics and aggregates (kpiMetrics có tính toán so sánh tăng trưởng cùng kỳ)
+  const kpiMetrics = useMemo(() => {
+    return computeKpiMetrics(
+      filteredRecords,
+      previousPeriodFilteredRecords,
+      presetPeriods.comparisonLabel
+    );
+  }, [filteredRecords, previousPeriodFilteredRecords, presetPeriods.comparisonLabel]);
   const accountStats = useMemo(() => computeAccountStats(filteredRecords), [filteredRecords]);
   const departmentStats = useMemo(() => computeDepartmentStats(filteredRecords), [filteredRecords]);
   const featureStats = useMemo(() => computeFeatureStats(filteredRecords), [filteredRecords]);
@@ -300,7 +327,7 @@ export default function App() {
         {/* Fast Sync Bar for Google Sheets */}
         <QuickSyncBar onApplyData={handleFileUpload} currentCount={baseRecords.length} />
 
-        {/* 1. Bộ Lọc Phân Cấp (Vai trò -> Ban -> Người) ĐẶT TRÊN CÙNG THEO YÊU CẦU */}
+        {/* 1. Bộ Lọc Phân Cấp & Mốc Thời Gian */}
         <FilterBar
           filters={filters}
           onFilterChange={setFilters}
@@ -312,6 +339,8 @@ export default function App() {
           totalCount={baseRecords.length}
           filteredCount={filteredRecords.length}
           excludedTestCount={excludedTestCount}
+          anchorDate={anchorDate}
+          presetPeriods={presetPeriods}
         />
 
         {/* 2. KPI Metrics Summary (Tự động cập nhật theo bộ lọc) */}

@@ -16,8 +16,33 @@ export interface AccessRecord {
   timestamp: number; // epoch ms
 }
 
+export type TimePreset =
+  | 'today' // Hôm nay: mặc định active
+  | 'yesterday' // Hôm qua
+  | 'this_week' // Tuần này
+  | 'last_week' // Tuần trước
+  | 'this_month' // Tháng này
+  | 'last_month' // Tháng trước
+  | 'custom' // Khoảng thời gian
+  | 'all'; // Tất cả
+
+export interface CustomDateRange {
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+}
+
+export interface GrowthMetric {
+  current: number;
+  previous: number;
+  delta: number;
+  percentage: number;
+  periodLabel: string;
+}
+
 export interface FilterState {
   search: string;
+  timePreset: TimePreset;
+  customRange: CustomDateRange;
   date: string; // 'ALL' or specific DD/MM/YYYY
   department: string; // 'ALL' or specific
   platform: string; // 'ALL' | 'WEB' | 'APP'
@@ -50,6 +75,12 @@ export interface KpiMetrics {
   topFeature: { name: string; count: number };
   peakHour: { hour: number; count: number };
   peakDay: { date: string; count: number };
+  growth: {
+    logs: GrowthMetric;
+    users: GrowthMetric;
+    departments: GrowthMetric;
+    comparisonPeriodName: string;
+  };
 }
 
 export interface AccountStat {

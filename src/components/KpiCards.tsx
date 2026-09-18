@@ -1,10 +1,53 @@
-import { Users, Globe, Smartphone, Clock, Flame, Building2, TrendingUp, Layers } from 'lucide-react';
-import { KpiMetrics } from '../types';
+import { Users, Globe, Smartphone, Clock, Flame, Building2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { KpiMetrics, GrowthMetric } from '../types';
 
 interface KpiCardsProps {
   metrics: KpiMetrics;
   onSelectAccount?: (account: string) => void;
   onSelectDepartment?: (dept: string) => void;
+}
+
+function GrowthIndicator({
+  growth,
+  unit = '',
+}: {
+  growth?: GrowthMetric;
+  unit?: string;
+}) {
+  if (!growth) return null;
+
+  const { delta, percentage, periodLabel } = growth;
+  const isPositive = delta > 0;
+  const isNegative = delta < 0;
+
+  const bgClass = isPositive
+    ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
+    : isNegative
+    ? 'bg-rose-50 text-rose-700 border-rose-200/80'
+    : 'bg-slate-100 text-slate-600 border-slate-200';
+
+  const icon = isPositive ? (
+    <TrendingUp className="w-3 h-3 text-emerald-600 inline shrink-0" />
+  ) : isNegative ? (
+    <TrendingDown className="w-3 h-3 text-rose-600 inline shrink-0" />
+  ) : (
+    <Minus className="w-3 h-3 text-slate-400 inline shrink-0" />
+  );
+
+  const formattedDelta = isPositive ? `+${delta}` : `${delta}`;
+  const formattedPercent = isPositive ? `+${percentage}%` : `${percentage}%`;
+
+  return (
+    <div className="flex items-center flex-wrap gap-1.5 mt-2.5 text-xs">
+      <span className={`inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-md border text-[11px] ${bgClass}`}>
+        {icon}
+        <span>{formattedPercent}</span>
+      </span>
+      <span className="text-slate-500 text-[11px] truncate">
+        ({formattedDelta}{unit ? ` ${unit}` : ''}) so với {periodLabel}
+      </span>
+    </div>
+  );
 }
 
 export function KpiCards({ metrics, onSelectAccount, onSelectDepartment }: KpiCardsProps) {
@@ -22,6 +65,9 @@ export function KpiCards({ metrics, onSelectAccount, onSelectDepartment }: KpiCa
           <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
             {metrics.totalLogs.toLocaleString()}
           </div>
+
+          {/* So sánh tăng trưởng so với cùng kỳ */}
+          <GrowthIndicator growth={metrics.growth?.logs} unit="lượt" />
         </div>
 
         <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
@@ -62,12 +108,15 @@ export function KpiCards({ metrics, onSelectAccount, onSelectDepartment }: KpiCa
           </div>
 
           {/* Thanh tiến trình tỉ lệ người dùng hoạt động */}
-          <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2.5 overflow-hidden" title={`Tỉ lệ hoạt động: ${metrics.userParticipationRate}% (${metrics.uniqueAccounts}/${metrics.totalSystemUsers || 268} users)`}>
+          <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2 overflow-hidden" title={`Tỉ lệ hoạt động: ${metrics.userParticipationRate}% (${metrics.uniqueAccounts}/${metrics.totalSystemUsers || 268} users)`}>
             <div
               className="bg-indigo-600 h-1.5 rounded-full transition-all duration-500"
               style={{ width: `${Math.min(metrics.userParticipationRate, 100)}%` }}
             />
           </div>
+
+          {/* So sánh tăng trưởng so với cùng kỳ */}
+          <GrowthIndicator growth={metrics.growth?.users} unit="user" />
         </div>
 
         <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
@@ -112,12 +161,15 @@ export function KpiCards({ metrics, onSelectAccount, onSelectDepartment }: KpiCa
           </div>
 
           {/* Thanh tiến trình độ phủ ban chuyên môn */}
-          <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2.5 overflow-hidden" title={`Độ phủ ban chuyên môn: ${metrics.departmentParticipationRate}% (${metrics.uniqueDepartments}/${metrics.totalSystemDepartments || 24} ban)`}>
+          <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2 overflow-hidden" title={`Độ phủ ban chuyên môn: ${metrics.departmentParticipationRate}% (${metrics.uniqueDepartments}/${metrics.totalSystemDepartments || 24} ban)`}>
             <div
               className="bg-amber-500 h-1.5 rounded-full transition-all duration-500"
               style={{ width: `${Math.min(metrics.departmentParticipationRate, 100)}%` }}
             />
           </div>
+
+          {/* So sánh tăng trưởng so với cùng kỳ */}
+          <GrowthIndicator growth={metrics.growth?.departments} unit="ban" />
         </div>
 
         <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
@@ -148,6 +200,9 @@ export function KpiCards({ metrics, onSelectAccount, onSelectDepartment }: KpiCa
           <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
             {String(metrics.peakHour.hour).padStart(2, '0')}:00 - {String(metrics.peakHour.hour + 1).padStart(2, '0')}:00
           </div>
+          <p className="text-slate-500 text-[11px] mt-2">
+            Khung giờ có lưu lượng truy cập ghi nhận cao nhất trong kỳ lọc
+          </p>
         </div>
 
         <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">

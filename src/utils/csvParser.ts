@@ -17,6 +17,7 @@ import {
   TOTAL_SYSTEM_USERS,
   TOTAL_SYSTEM_DEPARTMENTS,
 } from '../types';
+import { calculateGrowth } from './dateRanges';
 
 const VIETNAMESE_DAYS = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
 
@@ -208,13 +209,25 @@ function parseCsvLine(line: string, delimiter: string = ','): string[] {
   return result;
 }
 
-export function filterRecords(records: AccessRecord[], filters: FilterState): AccessRecord[] {
+export function filterRecords(
+  records: AccessRecord[],
+  filters: FilterState,
+  dateRangeOverride?: { startIso?: string; endIso?: string }
+): AccessRecord[] {
   const searchLower = filters.search.trim().toLowerCase();
 
   return records.filter((r) => {
     // Mặc định loại bỏ các bản ghi của các acc wms_bbt, wms_truongban, wms_phongvien và ban Tech, Test WMS
     if (filters.excludeTestAccounts && isDefaultExcludedRecord(r)) {
       return false;
+    }
+
+    // Date range filtering (theo mốc thời gian Hôm nay, Hôm qua, Tuần này, Tháng này, Khoảng thời gian...)
+    if (dateRangeOverride?.startIso && dateRangeOverride.startIso !== '') {
+      if (!r.isoDate || r.isoDate < dateRangeOverride.startIso) return false;
+    }
+    if (dateRangeOverride?.endIso && dateRangeOverride.endIso !== '') {
+      if (!r.isoDate || r.isoDate > dateRangeOverride.endIso) return false;
     }
 
     // Search query matches account, department, feature, IP, role, os
@@ -273,9 +286,16 @@ export function filterRecords(records: AccessRecord[], filters: FilterState): Ac
   });
 }
 
-export function computeKpiMetrics(records: AccessRecord[]): KpiMetrics {
+export function computeKpiMetrics(
+  records: AccessRecord[],
+  previousRecords: AccessRecord[] = [],
+  comparisonPeriodName: string = 'cùng kỳ'
+): KpiMetrics {
   const totalLogs = records.length;
   if (totalLogs === 0) {
+    const prevAccounts = new Set(previousRecords.map((r) => r.account)).size;
+    const prevDepartments = new Set(previousRecords.map((r) => r.department)).size;
+
     return {
       totalLogs: 0,
       uniqueAccounts: 0,
@@ -294,6 +314,12 @@ export function computeKpiMetrics(records: AccessRecord[]): KpiMetrics {
       topFeature: { name: '-', count: 0 },
       peakHour: { hour: 0, count: 0 },
       peakDay: { date: '-', count: 0 },
+      growth: {
+        logs: calculateGrowth(0, previousRecords.length, comparisonPeriodName),
+        users: calculateGrowth(0, prevAccounts, comparisonPeriodName),
+        departments: calculateGrowth(0, prevDepartments, comparisonPeriodName),
+        comparisonPeriodName,
+      },
     };
   }
 
@@ -383,6 +409,22 @@ export function computeKpiMetrics(records: AccessRecord[]): KpiMetrics {
   const userParticipationRate = Number(((accountCounts.size / TOTAL_SYSTEM_USERS) * 100).toFixed(1));
   const departmentParticipationRate = Number(((deptCounts.size / TOTAL_SYSTEM_DEPARTMENTS) * 100).toFixed(1));
 
+  // Thống kê cùng kỳ trước để so sánh tăng trưởng cho 3 box thống kê
+  const prevLogs = previousRecords.length;
+  const prevAccounts = new Set<string>();
+  const prevDepartments = new Set<string>();
+  for (const pr of previousRecords) {
+    if (pr.account) prevAccounts.add(pr.account);
+    if (pr.department) prevDepartments.add(pr.department);
+  }
+
+  const growth = {
+    logs: calculateGrowth(totalLogs, prevLogs, comparisonPeriodName),
+    users: calculateGrowth(accountCounts.size, prevAccounts.size, comparisonPeriodName),
+    departments: calculateGrowth(deptCounts.size, prevDepartments.size, comparisonPeriodName),
+    comparisonPeriodName,
+  };
+
   return {
     totalLogs,
     uniqueAccounts: accountCounts.size,
@@ -401,6 +443,7 @@ export function computeKpiMetrics(records: AccessRecord[]): KpiMetrics {
     topFeature,
     peakHour,
     peakDay,
+    growth,
   };
 }
 
