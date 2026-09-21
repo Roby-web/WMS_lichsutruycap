@@ -1,4 +1,4 @@
-export const RAW_ACCESS_CSV = `STT,Tài khoản,Chức năng,Thời gian,Nền tảng,Hệ điều hành,Ban,Vai trò,IP
+STT,Tài khoản,Chức năng,Thời gian,Nền tảng,Hệ điều hành,Ban,Vai trò,IP
 1,huyanh,Story,14:07:42 21/09/2026,WEB,Windows,Tech,Trưởng/Phó ban,c118bd00aaba8ef2f46927339630d76c
 2,hoangyen,Story,13:54:55 21/09/2026,WEB,MacOS,Ngôi sao,Phóng viên,fc266d1a95cd59670b088be4d9043527
 3,nguyenle,Story,13:53:16 21/09/2026,WEB,Windows,Giáo dục,Phóng viên,ba7a0f91739bfcc96c82e5b0b852a921
@@ -1755,4 +1755,4 @@ export const RAW_ACCESS_CSV = `STT,Tài khoản,Chức năng,Thời gian,Nền t
 1754,thiha,Story,03:59:14 18/09/2026,APP,Android,Kinh doanh,Phóng viên,10.94.26.9
 1755,thiha,Story,03:59:03 18/09/2026,APP,Android,Kinh doanh,Phóng viên,10.94.26.9
 1756,thiha,Story,03:58:52 18/09/2026,APP,Android,Kinh doanh,Phóng viên,10.94.26.9
-1757,thiha,Story,03:58:40 18/09/2026,APP,Android,Kinh doanh,Phóng viên,10.94.26.9`;
+1757,thiha,Story,03:58:40 18/09/2026,APP,Android,Kinh doanh,Phóng viên,10.94.26.9

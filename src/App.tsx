@@ -19,7 +19,7 @@ import {
   computeDepartmentDailyAvgStats,
 } from './utils/csvParser';
 import { getAnchorDate, resolvePresetPeriods } from './utils/dateRanges';
-import { FilterState } from './types';
+import { FilterState, AutoSyncScheduleConfig } from './types';
 import { Header } from './components/Header';
 import { KpiCards } from './components/KpiCards';
 import { FilterBar } from './components/FilterBar';
@@ -33,11 +33,25 @@ import { HeatmapView } from './components/HeatmapView';
 import { DataTable } from './components/DataTable';
 import { AccountDetailModal } from './components/AccountDetailModal';
 import { ImportLinkModal } from './components/ImportLinkModal';
+import { DataSourceModal } from './components/DataSourceModal';
+import { ScheduleModal } from './components/ScheduleModal';
 import { QuickSyncBar } from './components/QuickSyncBar';
-import { LayoutDashboard, TableProperties, Flame, Activity } from 'lucide-react';
+import {
+  fetchLatestDataFromUrl,
+  STORAGE_KEY_SOURCE_URL,
+  STORAGE_KEY_LAST_SYNC_TIME,
+  DEFAULT_DATA_SOURCE_URL,
+} from './utils/syncService';
+import {
+  getScheduleConfig,
+  shouldTriggerAutoSync,
+  recordScheduleExecution,
+  saveScheduleConfig,
+} from './utils/scheduleService';
+import { LayoutDashboard, TableProperties, Flame, Activity, CheckCircle2, AlertCircle, X, CalendarClock } from 'lucide-react';
 
-const STORAGE_KEY_CSV = 'access_dashboard_custom_csv_v2';
-const STORAGE_KEY_NAME = 'access_dashboard_custom_name_v2';
+const STORAGE_KEY_CSV = 'access_dashboard_custom_csv_v3';
+const STORAGE_KEY_NAME = 'access_dashboard_custom_name_v3';
 const STORAGE_KEY_EXCLUDE_TEST = 'wms_exclude_test_records_v1';
 
 const getInitialExcludeTest = (): boolean => {
@@ -51,7 +65,7 @@ const getInitialExcludeTest = (): boolean => {
 
 const INITIAL_FILTERS: FilterState = {
   search: '',
-  timePreset: 'today', // Hôm nay: mặc định active theo yêu cầu
+  timePreset: 'all', // Mặc định show tất cả các ngày (toàn bộ thời gian)
   customRange: {
     startDate: '',
     endDate: '',
@@ -80,9 +94,9 @@ export default function App() {
   const [activeFileName, setActiveFileName] = useState<string>(() => {
     try {
       const savedName = localStorage.getItem(STORAGE_KEY_NAME);
-      return savedName || 'Lich_su_truy_cap_487_records.csv';
+      return savedName || 'Lich_su_truy_cap_1757_records.csv';
     } catch {
-      return 'Lich_su_truy_cap_487_records.csv';
+      return 'Lich_su_truy_cap_1757_records.csv';
     }
   });
 
@@ -106,6 +120,34 @@ export default function App() {
 
   // Link Import Modal
   const [isLinkModalOpen, setIsLinkModalOpen] = useState<boolean>(false);
+
+  // Nguồn Dữ Liệu & Đồng Bộ (Google Sheets / CSV Link)
+  const [dataSourceUrl, setDataSourceUrl] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_SOURCE_URL);
+      if (saved && saved.trim()) return saved.trim();
+      localStorage.setItem(STORAGE_KEY_SOURCE_URL, DEFAULT_DATA_SOURCE_URL);
+      return DEFAULT_DATA_SOURCE_URL;
+    } catch {
+      return DEFAULT_DATA_SOURCE_URL;
+    }
+  });
+
+  const [lastSyncTime, setLastSyncTime] = useState<string>(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY_LAST_SYNC_TIME) || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const [isDataSourceModalOpen, setIsDataSourceModalOpen] = useState<boolean>(false);
+  const [isUpdatingData, setIsUpdatingData] = useState<boolean>(false);
+  const [syncToast, setSyncToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Lịch cập nhật dữ liệu tự động từ link vào 10h sáng hàng ngày
+  const [scheduleConfig, setScheduleConfig] = useState<AutoSyncScheduleConfig>(() => getScheduleConfig());
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState<boolean>(false);
 
   // Parse all records
   const allRecords = useMemo(() => {
@@ -214,7 +256,24 @@ export default function App() {
   const platformStats = useMemo(() => computePlatformStats(filteredRecords), [filteredRecords]);
   const osStats = useMemo(() => computeOsStats(filteredRecords), [filteredRecords]);
   const hourlyData = useMemo(() => computeHourlyStats(filteredRecords), [filteredRecords]);
-  const dailyData = useMemo(() => computeDailyStats(filteredRecords), [filteredRecords]);
+  const dailyData = useMemo(() => computeDailyStats(filteredRecords, true), [filteredRecords]);
+
+  // Full dữ liệu tất cả các ngày từ khi có dữ liệu (không bị ngắt bởi bộ lọc ngày hay khoảng thời gian thu hẹp)
+  // để biểu đồ đường xu hướng hiển thị đầy đủ chuỗi ngày đánh giá toàn diện sự thay đổi
+  const fullDailyRecords = useMemo(() => {
+    return filterRecords(
+      baseRecords,
+      {
+        ...filters,
+        date: 'ALL',
+      },
+      {
+        startIso: '1970-01-01',
+        endIso: '2099-12-31',
+      }
+    );
+  }, [baseRecords, filters]);
+  const fullDailyData = useMemo(() => computeDailyStats(fullDailyRecords, true), [fullDailyRecords]);
 
   // Biểu đồ Trung bình
   const hourlyAvgData = useMemo(() => computeHourlyAverageStats(filteredRecords), [filteredRecords]);
@@ -260,7 +319,7 @@ export default function App() {
 
   const handleResetData = () => {
     setCsvText(RAW_ACCESS_CSV);
-    setActiveFileName('Lich_su_truy_cap_487_records.csv');
+    setActiveFileName('Lich_su_truy_cap_1757_records.csv');
     setFilters((prev) => ({
       ...INITIAL_FILTERS,
       excludeTestAccounts: prev.excludeTestAccounts, // Giữ nguyên tùy chọn loại bỏ test
@@ -270,6 +329,189 @@ export default function App() {
       localStorage.removeItem(STORAGE_KEY_NAME);
     } catch (e) {
       console.error('Failed to remove from localStorage', e);
+    }
+  };
+
+  const handleDataSourceUrlChange = (newUrl: string) => {
+    setDataSourceUrl(newUrl);
+    try {
+      localStorage.setItem(STORAGE_KEY_SOURCE_URL, newUrl);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleUpdateLatestData = async () => {
+    const urlToUse = (dataSourceUrl && dataSourceUrl.trim()) || DEFAULT_DATA_SOURCE_URL;
+
+    setIsUpdatingData(true);
+    setSyncToast(null);
+
+    try {
+      const res = await fetchLatestDataFromUrl(urlToUse);
+      handleFileUpload(res.csvText, `Google Sheets (${res.recordCount} dòng)`);
+      setLastSyncTime(res.syncedTimeFormatted);
+      try {
+        localStorage.setItem(STORAGE_KEY_LAST_SYNC_TIME, res.syncedTimeFormatted);
+      } catch {
+        // ignore
+      }
+      setSyncToast({
+        type: 'success',
+        message: `Đã cập nhật thành công ${res.recordCount.toLocaleString()} bản ghi mới nhất từ nguồn dữ liệu đã lưu! (${res.syncedTimeFormatted})`,
+      });
+    } catch (err: any) {
+      setSyncToast({
+        type: 'error',
+        message: err.message || 'Lỗi khi cập nhật dữ liệu mới nhất từ nguồn.',
+      });
+    } finally {
+      setIsUpdatingData(false);
+    }
+  };
+
+  const handleSaveAndSyncDataSource = async (newUrl: string, providedCsv?: string, providedCount?: number) => {
+    handleDataSourceUrlChange(newUrl);
+
+    if (providedCsv && providedCount !== undefined) {
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')} ngày ${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+      handleFileUpload(providedCsv, `Google Sheets (${providedCount} dòng)`);
+      setLastSyncTime(timeStr);
+      try {
+        localStorage.setItem(STORAGE_KEY_LAST_SYNC_TIME, timeStr);
+      } catch {
+        // ignore
+      }
+      setSyncToast({
+        type: 'success',
+        message: `Đã cập nhật thành công ${providedCount.toLocaleString()} bản ghi mới nhất! (${timeStr})`,
+      });
+    } else if (newUrl.trim()) {
+      setIsUpdatingData(true);
+      try {
+        const res = await fetchLatestDataFromUrl(newUrl);
+        handleFileUpload(res.csvText, `Google Sheets (${res.recordCount} dòng)`);
+        setLastSyncTime(res.syncedTimeFormatted);
+        try {
+          localStorage.setItem(STORAGE_KEY_LAST_SYNC_TIME, res.syncedTimeFormatted);
+        } catch {
+          // ignore
+        }
+        setSyncToast({
+          type: 'success',
+          message: `Đã cập nhật thành công ${res.recordCount.toLocaleString()} bản ghi mới nhất từ Google Sheets! (${res.syncedTimeFormatted})`,
+        });
+      } catch (err: any) {
+        setSyncToast({
+          type: 'error',
+          message: err.message || 'Lỗi khi kết nối nguồn dữ liệu.',
+        });
+      } finally {
+        setIsUpdatingData(false);
+      }
+    }
+  };
+
+  // Định kỳ kiểm tra lịch cập nhật tự động từ link vào 10h sáng hàng ngày
+  useEffect(() => {
+    const checkAndExecuteScheduledSync = async () => {
+      const currentConfig = getScheduleConfig();
+      const now = new Date();
+
+      if (shouldTriggerAutoSync(currentConfig, now)) {
+        console.log('[Auto-Sync] Đã đến giờ hẹn tự động cập nhật:', currentConfig.time);
+        const urlToUse = (dataSourceUrl && dataSourceUrl.trim()) || DEFAULT_DATA_SOURCE_URL;
+
+        setIsUpdatingData(true);
+        try {
+          const res = await fetchLatestDataFromUrl(urlToUse);
+          handleFileUpload(res.csvText, `Google Sheets (${res.recordCount} dòng)`);
+          setLastSyncTime(res.syncedTimeFormatted);
+          try {
+            localStorage.setItem(STORAGE_KEY_LAST_SYNC_TIME, res.syncedTimeFormatted);
+          } catch {
+            // ignore
+          }
+
+          const updatedConfig = recordScheduleExecution(
+            currentConfig,
+            'success',
+            `Tự động cập nhật thành công ${res.recordCount} bản ghi`,
+            res.recordCount,
+            now
+          );
+          setScheduleConfig(updatedConfig);
+
+          setSyncToast({
+            type: 'success',
+            message: `⏰ [Đã đến ${currentConfig.time || '10:00'} sáng] Hệ thống đã tự động cập nhật ${res.recordCount.toLocaleString()} bản ghi mới nhất từ link nguồn theo lịch hẹn! (${res.syncedTimeFormatted})`,
+          });
+        } catch (err: any) {
+          console.error('[Auto-Sync] Lỗi cập nhật theo lịch:', err);
+          const updatedConfig = recordScheduleExecution(
+            currentConfig,
+            'error',
+            err.message || 'Lỗi kết nối khi tự động cập nhật',
+            0,
+            now
+          );
+          setScheduleConfig(updatedConfig);
+
+          setSyncToast({
+            type: 'error',
+            message: `⏰ [Lịch tự động ${currentConfig.time || '10:00'}] Không thể tự động lấy dữ liệu: ${err.message || 'Lỗi kết nối link'}`,
+          });
+        } finally {
+          setIsUpdatingData(false);
+        }
+      }
+    };
+
+    // Kiểm tra ngay khi khởi động
+    checkAndExecuteScheduledSync();
+
+    // Và quét kiểm tra mỗi 30 giây
+    const intervalTimer = setInterval(checkAndExecuteScheduledSync, 30000);
+    return () => clearInterval(intervalTimer);
+  }, [dataSourceUrl]);
+
+  // Chạy thử nghiệm ngay lịch tự động
+  const handleTriggerScheduleNow = async () => {
+    const urlToUse = (dataSourceUrl && dataSourceUrl.trim()) || DEFAULT_DATA_SOURCE_URL;
+    setIsUpdatingData(true);
+    try {
+      const res = await fetchLatestDataFromUrl(urlToUse);
+      handleFileUpload(res.csvText, `Google Sheets (${res.recordCount} dòng)`);
+      setLastSyncTime(res.syncedTimeFormatted);
+      try {
+        localStorage.setItem(STORAGE_KEY_LAST_SYNC_TIME, res.syncedTimeFormatted);
+      } catch {
+        // ignore
+      }
+
+      const now = new Date();
+      const updatedConfig = recordScheduleExecution(
+        scheduleConfig,
+        'success',
+        `Chạy thử nghiệm thành công (${res.recordCount} dòng)`,
+        res.recordCount,
+        now
+      );
+      setScheduleConfig(updatedConfig);
+
+      setSyncToast({
+        type: 'success',
+        message: `⏰ [Chạy thử lịch tự động] Cập nhật thành công ${res.recordCount.toLocaleString()} bản ghi mới nhất từ link nguồn! (${res.syncedTimeFormatted})`,
+      });
+    } catch (err: any) {
+      setSyncToast({
+        type: 'error',
+        message: `Lỗi khi chạy thử cập nhật từ link: ${err.message || 'Không thể kết nối link'}`,
+      });
+      throw err;
+    } finally {
+      setIsUpdatingData(false);
     }
   };
 
@@ -320,12 +562,55 @@ export default function App() {
         onOpenLinkModal={() => setIsLinkModalOpen(true)}
         filteredRecords={filteredRecords}
         activeFileName={activeFileName}
+        dataSourceUrl={dataSourceUrl}
+        lastSyncTime={lastSyncTime}
+        isUpdating={isUpdatingData}
+        onUpdateData={handleUpdateLatestData}
+        onOpenDataSourceModal={() => setIsDataSourceModalOpen(true)}
+        onOpenScheduleModal={() => setIsScheduleModalOpen(true)}
+        scheduleConfig={scheduleConfig}
       />
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        {/* Sync Toast Banner */}
+        {syncToast && (
+          <div
+            className={`flex items-center justify-between gap-3 px-4 py-3 rounded-xl border text-xs shadow-xs animate-in fade-in duration-200 ${
+              syncToast.type === 'success'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                : 'bg-rose-50 border-rose-200 text-rose-900'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {syncToast.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              )}
+              <span className="font-semibold">{syncToast.message}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSyncToast(null)}
+              className="p-1 text-slate-400 hover:text-slate-600 rounded-md cursor-pointer transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Fast Sync Bar for Google Sheets */}
-        <QuickSyncBar onApplyData={handleFileUpload} currentCount={baseRecords.length} />
+        <QuickSyncBar
+          dataSourceUrl={dataSourceUrl}
+          onDataSourceUrlChange={handleDataSourceUrlChange}
+          onApplyData={handleFileUpload}
+          lastSyncTime={lastSyncTime}
+          currentCount={baseRecords.length}
+          onOpenDataSourceModal={() => setIsDataSourceModalOpen(true)}
+          onOpenScheduleModal={() => setIsScheduleModalOpen(true)}
+          scheduleConfig={scheduleConfig}
+        />
 
         {/* 1. Bộ Lọc Phân Cấp & Mốc Thời Gian */}
         <FilterBar
@@ -424,6 +709,8 @@ export default function App() {
               <TimeTrendChart
                 dailyData={dailyData}
                 hourlyData={hourlyData}
+                fullDailyData={fullDailyData}
+                selectedDate={filters.date}
                 onSelectDate={handleSelectDate}
               />
 
@@ -497,6 +784,33 @@ export default function App() {
         isOpen={isLinkModalOpen}
         onClose={() => setIsLinkModalOpen(false)}
         onApplyData={handleFileUpload}
+      />
+
+      {/* Data Source Configuration & Quick Sync Modal */}
+      <DataSourceModal
+        isOpen={isDataSourceModalOpen}
+        onClose={() => setIsDataSourceModalOpen(false)}
+        currentUrl={dataSourceUrl}
+        onSaveAndSync={handleSaveAndSyncDataSource}
+        onOpenScheduleModal={() => setIsScheduleModalOpen(true)}
+        scheduleConfig={scheduleConfig}
+      />
+
+      {/* Schedule Auto-Sync Modal (10h sáng hàng ngày) */}
+      <ScheduleModal
+        isOpen={isScheduleModalOpen}
+        onClose={() => setIsScheduleModalOpen(false)}
+        config={scheduleConfig}
+        onSaveConfig={(newConfig) => {
+          setScheduleConfig(newConfig);
+          setSyncToast({
+            type: 'success',
+            message: `Đã lưu cấu hình tự động cập nhật vào ${newConfig.time} hàng ngày (${newConfig.enabled ? 'Đang kích hoạt' : 'Tạm dừng'})!`,
+          });
+        }}
+        onTriggerNow={handleTriggerScheduleNow}
+        dataSourceUrl={dataSourceUrl}
+        isUpdating={isUpdatingData}
       />
     </div>
   );

@@ -677,7 +677,7 @@ export function computeHourlyStats(records: AccessRecord[]): HourlyStat[] {
   return hours;
 }
 
-export function computeDailyStats(records: AccessRecord[]): DailyStat[] {
+export function computeDailyStats(records: AccessRecord[], fillContinuousDays: boolean = true): DailyStat[] {
   const map = new Map<
     string,
     {
@@ -690,8 +690,14 @@ export function computeDailyStats(records: AccessRecord[]): DailyStat[] {
     }
   >();
 
+  let minIso = '';
+  let maxIso = '';
+
   for (const r of records) {
-    if (!r.date || r.date === 'N/A') continue;
+    if (!r.date || r.date === 'N/A' || !r.isoDate || r.isoDate === 'N/A') continue;
+
+    if (!minIso || r.isoDate < minIso) minIso = r.isoDate;
+    if (!maxIso || r.isoDate > maxIso) maxIso = r.isoDate;
 
     if (!map.has(r.date)) {
       map.set(r.date, {
@@ -709,6 +715,38 @@ export function computeDailyStats(records: AccessRecord[]): DailyStat[] {
     item.users.add(r.account);
     if (r.platform === 'WEB') item.web++;
     else if (r.platform === 'APP') item.app++;
+  }
+
+  // Điền đầy đủ các ngày liên tục giữa min và max date nếu có ngày trống (0 lượt)
+  if (fillContinuousDays && minIso && maxIso && minIso.includes('-') && maxIso.includes('-')) {
+    const [minY, minM, minD] = minIso.split('-').map(Number);
+    const [maxY, maxM, maxD] = maxIso.split('-').map(Number);
+    const cur = new Date(minY, minM - 1, minD);
+    const end = new Date(maxY, maxM - 1, maxD);
+
+    // Giới hạn an toàn tối đa 365 ngày
+    let safetyCounter = 0;
+    while (cur.getTime() <= end.getTime() && safetyCounter < 365) {
+      safetyCounter++;
+      const dd = String(cur.getDate()).padStart(2, '0');
+      const mm = String(cur.getMonth() + 1).padStart(2, '0');
+      const yyyy = cur.getFullYear();
+      const dateStr = `${dd}/${mm}/${yyyy}`;
+      const isoStr = `${yyyy}-${mm}-${dd}`;
+
+      if (!map.has(dateStr)) {
+        const dow = VIETNAMESE_DAYS[cur.getDay()] || '';
+        map.set(dateStr, {
+          isoDate: isoStr,
+          displayDate: `${dateStr} (${dow})`,
+          count: 0,
+          users: new Set(),
+          web: 0,
+          app: 0,
+        });
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
   }
 
   const result: DailyStat[] = [];

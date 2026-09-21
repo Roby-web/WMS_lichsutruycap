@@ -39,6 +39,17 @@ export interface GrowthMetric {
   periodLabel: string;
 }
 
+export interface AutoSyncScheduleConfig {
+  enabled: boolean;
+  time: string; // HH:mm format, e.g. "10:00"
+  repeat: 'daily';
+  lastRunDate?: string; // YYYY-MM-DD
+  lastRunTime?: string; // HH:mm:ss DD/MM/YYYY
+  lastRunStatus?: 'success' | 'error';
+  lastRunMessage?: string;
+  lastRecordCount?: number;
+}
+
 export interface FilterState {
   search: string;
   timePreset: TimePreset;
