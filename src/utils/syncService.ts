@@ -93,30 +93,38 @@ export async function fetchLatestDataFromUrl(sourceUrl?: string): Promise<SyncRe
 
   let text = '';
   let success = false;
+  let lastErrorMessage = '';
 
-  // 1. Direct browser fetch
+  // 1. Primary: Use Vite server proxy (/api/fetch-sheet) which handles Google Sheets redirects & headers
   try {
-    const res = await fetch(targetCsvUrl, {
-      headers: {
-        Accept: 'text/csv, text/plain, */*',
-      },
-    });
+    const proxyUrl = `/api/fetch-sheet?url=${encodeURIComponent(cleanUrl)}`;
+    const res = await fetch(proxyUrl);
     if (res.ok) {
       const raw = await res.text();
       if (raw && !raw.trim().startsWith('<!DOCTYPE') && !raw.trim().startsWith('<html') && raw.includes(',')) {
         text = raw;
         success = true;
       }
+    } else {
+      try {
+        const errJson = await res.json();
+        if (errJson.error) lastErrorMessage = errJson.error;
+      } catch {
+        // ignore
+      }
     }
   } catch {
-    // Direct fetch blocked by CORS, proceed to proxy
+    // Local proxy not available or failed
   }
 
-  // 2. Vite dev server proxy (/api/fetch-sheet)
+  // 2. Direct browser fetch with converted target CSV URL
   if (!success) {
     try {
-      const proxyUrl = `/api/fetch-sheet?url=${encodeURIComponent(targetCsvUrl)}`;
-      const res = await fetch(proxyUrl);
+      const res = await fetch(targetCsvUrl, {
+        headers: {
+          Accept: 'text/csv, text/plain, */*',
+        },
+      });
       if (res.ok) {
         const raw = await res.text();
         if (raw && !raw.trim().startsWith('<!DOCTYPE') && !raw.trim().startsWith('<html') && raw.includes(',')) {
@@ -125,7 +133,7 @@ export async function fetchLatestDataFromUrl(sourceUrl?: string): Promise<SyncRe
         }
       }
     } catch {
-      // Local proxy not available or failed
+      // Direct fetch blocked by CORS, proceed to fallback
     }
   }
 
@@ -152,7 +160,7 @@ export async function fetchLatestDataFromUrl(sourceUrl?: string): Promise<SyncRe
     }
   }
 
-  // 4. Public CORS Proxy fallback (for standalone preview/production builds)
+  // 4. Public CORS Proxy fallback (for preview/production standalone environments)
   if (!success) {
     try {
       const corsProxy = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetCsvUrl)}`;
@@ -172,7 +180,7 @@ export async function fetchLatestDataFromUrl(sourceUrl?: string): Promise<SyncRe
   const now = new Date();
   const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')} ngày ${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
 
-  // If remote fetch returned valid CSV, use it
+  // If remote fetch returned valid CSV, parse and return exact records
   if (success && text && text.length > 30) {
     const records = parseAccessCsv(text);
     if (records.length > 0) {
@@ -187,17 +195,15 @@ export async function fetchLatestDataFromUrl(sourceUrl?: string): Promise<SyncRe
     }
   }
 
-  // Seamless fallback: Generate fresh live updated access records for today (17/09/2026)
-  // This guarantees clicking "Cập nhật dữ liệu" immediately updates without errors or asking for a link
-  const freshCsv = generateFreshUpdatedCsv();
-  const records = parseAccessCsv(freshCsv);
+  // If sync failed, throw explicit informative error instead of silently falsifying data
+  let failReason = 'Không thể lấy dữ liệu từ link Google Sheets.';
+  if (lastErrorMessage) {
+    failReason = lastErrorMessage;
+  } else if (!cleanUrl || cleanUrl.includes('1_wms_log_history_live_source')) {
+    failReason = 'Vui lòng dán liên kết Google Sheets thật hoặc dán trực tiếp 897 dòng dữ liệu vào ô cập nhật.';
+  } else {
+    failReason = `Không thể đọc dữ liệu từ ${cleanUrl}. Vui lòng kiểm tra quyền chia sẻ: Bật "Bất kỳ ai có đường liên kết đều có thể xem" (Viewer), hoặc dùng tính năng "Dán trực tiếp dữ liệu".`;
+  }
 
-  return {
-    csvText: freshCsv,
-    records,
-    recordCount: records.length,
-    syncedAt: now,
-    syncedTimeFormatted: timeStr,
-    sourceType: 'synced_feed',
-  };
+  throw new Error(failReason);
 }

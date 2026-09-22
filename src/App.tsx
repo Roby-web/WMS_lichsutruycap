@@ -35,7 +35,6 @@ import { AccountDetailModal } from './components/AccountDetailModal';
 import { ImportLinkModal } from './components/ImportLinkModal';
 import { DataSourceModal } from './components/DataSourceModal';
 import { ScheduleModal } from './components/ScheduleModal';
-import { QuickSyncBar } from './components/QuickSyncBar';
 import {
   fetchLatestDataFromUrl,
   STORAGE_KEY_SOURCE_URL,
@@ -50,8 +49,8 @@ import {
 } from './utils/scheduleService';
 import { LayoutDashboard, TableProperties, Flame, Activity, CheckCircle2, AlertCircle, X, CalendarClock } from 'lucide-react';
 
-const STORAGE_KEY_CSV = 'access_dashboard_custom_csv_v3';
-const STORAGE_KEY_NAME = 'access_dashboard_custom_name_v3';
+const STORAGE_KEY_CSV = 'access_dashboard_custom_csv_v4';
+const STORAGE_KEY_NAME = 'access_dashboard_custom_name_v4';
 const STORAGE_KEY_EXCLUDE_TEST = 'wms_exclude_test_records_v1';
 
 const getInitialExcludeTest = (): boolean => {
@@ -82,11 +81,24 @@ const INITIAL_FILTERS: FilterState = {
 };
 
 export default function App() {
-  // Active dataset
+  // Active dataset (chuẩn 897 dòng dữ liệu từ link)
   const [csvText, setCsvText] = useState<string>(() => {
     try {
+      // Clear old v3 or stale datasets to guarantee exact 897 records from link
+      const oldV3 = localStorage.getItem('access_dashboard_custom_csv_v3');
+      if (oldV3) {
+        localStorage.removeItem('access_dashboard_custom_csv_v3');
+      }
       const saved = localStorage.getItem(STORAGE_KEY_CSV);
-      return saved || RAW_ACCESS_CSV;
+      if (saved && saved.trim().length > 30) {
+        // If old 1757 records cache is present, discard and use fresh 897 records
+        if (saved.includes('1757,thiha') || saved.includes('1734,thiha')) {
+          localStorage.removeItem(STORAGE_KEY_CSV);
+          return RAW_ACCESS_CSV;
+        }
+        return saved;
+      }
+      return RAW_ACCESS_CSV;
     } catch {
       return RAW_ACCESS_CSV;
     }
@@ -94,9 +106,10 @@ export default function App() {
   const [activeFileName, setActiveFileName] = useState<string>(() => {
     try {
       const savedName = localStorage.getItem(STORAGE_KEY_NAME);
-      return savedName || 'Lich_su_truy_cap_1757_records.csv';
+      if (savedName && !savedName.includes('1757')) return savedName;
+      return 'Lich_su_truy_cap_897_records.csv';
     } catch {
-      return 'Lich_su_truy_cap_1757_records.csv';
+      return 'Lich_su_truy_cap_897_records.csv';
     }
   });
 
@@ -319,7 +332,7 @@ export default function App() {
 
   const handleResetData = () => {
     setCsvText(RAW_ACCESS_CSV);
-    setActiveFileName('Lich_su_truy_cap_1757_records.csv');
+    setActiveFileName('Lich_su_truy_cap_897_records.csv');
     setFilters((prev) => ({
       ...INITIAL_FILTERS,
       excludeTestAccounts: prev.excludeTestAccounts, // Giữ nguyên tùy chọn loại bỏ test
@@ -600,18 +613,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Fast Sync Bar for Google Sheets */}
-        <QuickSyncBar
-          dataSourceUrl={dataSourceUrl}
-          onDataSourceUrlChange={handleDataSourceUrlChange}
-          onApplyData={handleFileUpload}
-          lastSyncTime={lastSyncTime}
-          currentCount={baseRecords.length}
-          onOpenDataSourceModal={() => setIsDataSourceModalOpen(true)}
-          onOpenScheduleModal={() => setIsScheduleModalOpen(true)}
-          scheduleConfig={scheduleConfig}
-        />
-
         {/* 1. Bộ Lọc Phân Cấp & Mốc Thời Gian */}
         <FilterBar
           filters={filters}
@@ -688,13 +689,13 @@ export default function App() {
         {/* Tab 1: Overview Dashboard */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
-            {/* 1. Biểu đồ Bổ Sung: Tần Suất Trung Bình / Người / Ngày (Theo yêu cầu) */}
-            <UserDailyAverageChart
-              dailyUserAvgData={dailyUserAvgData}
-              userDailyRanking={userDailyRanking}
-              departmentDailyAvg={departmentDailyAvg}
-              onSelectAccount={handleSelectAccount}
-              onSelectDepartment={handleSelectDepartment}
+            {/* 1. Xu Hướng Tần Suất Theo Ngày & Giờ (Được đưa lên đầu theo yêu cầu) */}
+            <TimeTrendChart
+              dailyData={dailyData}
+              hourlyData={hourlyData}
+              fullDailyData={fullDailyData}
+              selectedDate={filters.date}
+              onSelectDate={handleSelectDate}
             />
 
             {/* 2. Biểu đồ Trung bình trong ngày (từng giờ) & Trung bình trong tuần (từng thứ) */}
@@ -705,15 +706,6 @@ export default function App() {
             />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Timeline Trends */}
-              <TimeTrendChart
-                dailyData={dailyData}
-                hourlyData={hourlyData}
-                fullDailyData={fullDailyData}
-                selectedDate={filters.date}
-                onSelectDate={handleSelectDate}
-              />
-
               {/* Account & Department Ranking */}
               <AccountRankingChart
                 accountStats={accountStats}
@@ -721,9 +713,7 @@ export default function App() {
                 onSelectAccount={handleSelectAccount}
                 onSelectDepartment={handleSelectDepartment}
               />
-            </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Platform & Feature Distribution */}
               <PlatformFeatureChart
                 featureStats={featureStats}
@@ -732,10 +722,19 @@ export default function App() {
                 onSelectFeature={handleSelectFeature}
                 onSelectPlatform={handleSelectPlatform}
               />
-
-              {/* Heatmap Matrix Overview */}
-              <HeatmapView records={filteredRecords} />
             </div>
+
+            {/* 3. Tần Suất Trung Bình / Người / Ngày */}
+            <UserDailyAverageChart
+              dailyUserAvgData={dailyUserAvgData}
+              userDailyRanking={userDailyRanking}
+              departmentDailyAvg={departmentDailyAvg}
+              onSelectAccount={handleSelectAccount}
+              onSelectDepartment={handleSelectDepartment}
+            />
+
+            {/* 4. Heatmap Matrix Overview */}
+            <HeatmapView records={filteredRecords} />
 
             {/* Quick preview of data table */}
             <DataTable

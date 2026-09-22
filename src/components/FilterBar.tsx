@@ -11,8 +11,6 @@ import {
   Zap,
   ArrowRight,
   Sparkles,
-  ShieldCheck,
-  ShieldAlert,
   Clock,
 } from 'lucide-react';
 import { FilterState, TimePreset } from '../types';
@@ -118,60 +116,6 @@ export const FilterBar: React.FC<FilterBarProps> = ({
 
   return (
     <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-xs space-y-4">
-      {/* 0. Mặc Định Hệ Thống: Loại bỏ tài khoản test & ban test */}
-      <div className="bg-amber-50/80 border border-amber-200/90 rounded-xl p-3 sm:p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs">
-        <div className="flex items-start sm:items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5 sm:mt-0">
-            <ShieldCheck className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
-              <span className="bg-amber-200/80 text-amber-950 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
-                Mặc Định
-              </span>
-              <span>Đã loại bỏ các tài khoản test:</span>
-              <span className="font-mono text-amber-900 font-semibold bg-white px-1.5 py-0.5 rounded border border-amber-200">wms_bbt</span>
-              <span className="font-mono text-amber-900 font-semibold bg-white px-1.5 py-0.5 rounded border border-amber-200">wms_truongban</span>
-              <span className="font-mono text-amber-900 font-semibold bg-white px-1.5 py-0.5 rounded border border-amber-200">wms_phongvien</span>
-              <span className="text-slate-400">|</span>
-              <span>Loại bỏ ban:</span>
-              <span className="font-mono text-amber-900 font-semibold bg-white px-1.5 py-0.5 rounded border border-amber-200">Tech</span>
-              <span className="font-mono text-amber-900 font-semibold bg-white px-1.5 py-0.5 rounded border border-amber-200">Test WMS</span>
-            </div>
-            <div className="text-[11px] text-slate-600 mt-1">
-              {filters.excludeTestAccounts ? (
-                <span>
-                  {excludedTestCount > 0 ? (
-                    <strong className="text-amber-800 font-semibold">
-                      Đang ẩn {excludedTestCount} bản ghi thử nghiệm
-                    </strong>
-                  ) : (
-                    <span className="text-emerald-700 font-semibold">Đã lọc sạch toàn bộ dữ liệu</span>
-                  )}
-                  {' '}— cấu hình này được lưu và áp dụng mặc định cho tất cả các lần sau.
-                </span>
-              ) : (
-                <span className="text-rose-600 font-semibold">
-                  ⚠️ Đang bao gồm dữ liệu kiểm thử (acc wms_* và ban Tech / Test WMS).
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <label className="inline-flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-amber-300 shadow-xs cursor-pointer hover:bg-amber-50/60 transition-colors select-none">
-          <input
-            type="checkbox"
-            checked={Boolean(filters.excludeTestAccounts)}
-            onChange={(e) => onFilterChange({ ...filters, excludeTestAccounts: e.target.checked })}
-            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
-          />
-          <span className="text-xs font-bold text-slate-800">
-            Loại bỏ acc &amp; ban test
-          </span>
-        </label>
-      </div>
-
       {/* 1. Phân cấp lọc 3 cấp: Vai trò ➔ Ban ➔ Người */}
       <div className="bg-slate-50/80 rounded-xl p-3 sm:p-4 border border-slate-200/80">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">

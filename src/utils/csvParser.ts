@@ -677,12 +677,27 @@ export function computeHourlyStats(records: AccessRecord[]): HourlyStat[] {
   return hours;
 }
 
-export function computeDailyStats(records: AccessRecord[], fillContinuousDays: boolean = true): DailyStat[] {
+const SHORT_VIETNAMESE_DAYS: Record<number, string> = {
+  0: 'CN',
+  1: 'T2',
+  2: 'T3',
+  3: 'T4',
+  4: 'T5',
+  5: 'T6',
+  6: 'T7',
+};
+
+export function computeDailyStats(
+  records: AccessRecord[],
+  fillContinuousDays: boolean = true,
+  forceStartFloorIso: string = '2026-09-12'
+): DailyStat[] {
   const map = new Map<
     string,
     {
       isoDate: string;
       displayDate: string;
+      shortDisplayDate: string;
       count: number;
       users: Set<string>;
       web: number;
@@ -700,9 +715,13 @@ export function computeDailyStats(records: AccessRecord[], fillContinuousDays: b
     if (!maxIso || r.isoDate > maxIso) maxIso = r.isoDate;
 
     if (!map.has(r.date)) {
+      const parts = r.date.split('/');
+      const shortPart = parts.length >= 2 ? `${parts[0]}/${parts[1]}` : r.date;
+      const shortDow = r.dayOfWeek ? r.dayOfWeek.replace('Thứ ', 'T').replace('Chủ Nhật', 'CN') : '';
       map.set(r.date, {
         isoDate: r.isoDate,
         displayDate: `${r.date} (${r.dayOfWeek})`,
+        shortDisplayDate: shortDow ? `${shortPart} (${shortDow})` : shortPart,
         count: 0,
         users: new Set(),
         web: 0,
@@ -717,35 +736,43 @@ export function computeDailyStats(records: AccessRecord[], fillContinuousDays: b
     else if (r.platform === 'APP') item.app++;
   }
 
-  // Điền đầy đủ các ngày liên tục giữa min và max date nếu có ngày trống (0 lượt)
-  if (fillContinuousDays && minIso && maxIso && minIso.includes('-') && maxIso.includes('-')) {
-    const [minY, minM, minD] = minIso.split('-').map(Number);
-    const [maxY, maxM, maxD] = maxIso.split('-').map(Number);
-    const cur = new Date(minY, minM - 1, minD);
-    const end = new Date(maxY, maxM - 1, maxD);
+  // Điền đầy đủ các ngày liên tục từ mốc bắt đầu lấy dữ liệu (tối thiểu từ 12/09/2026) đến ngày mới nhất
+  if (fillContinuousDays) {
+    const baselineStartIso = forceStartFloorIso || '2026-09-12';
+    const effectiveMinIso = minIso ? (minIso < baselineStartIso ? minIso : baselineStartIso) : baselineStartIso;
+    const effectiveMaxIso = maxIso ? (maxIso > baselineStartIso ? maxIso : baselineStartIso) : '2026-09-21';
 
-    // Giới hạn an toàn tối đa 365 ngày
-    let safetyCounter = 0;
-    while (cur.getTime() <= end.getTime() && safetyCounter < 365) {
-      safetyCounter++;
-      const dd = String(cur.getDate()).padStart(2, '0');
-      const mm = String(cur.getMonth() + 1).padStart(2, '0');
-      const yyyy = cur.getFullYear();
-      const dateStr = `${dd}/${mm}/${yyyy}`;
-      const isoStr = `${yyyy}-${mm}-${dd}`;
+    if (effectiveMinIso.includes('-') && effectiveMaxIso.includes('-')) {
+      const [minY, minM, minD] = effectiveMinIso.split('-').map(Number);
+      const [maxY, maxM, maxD] = effectiveMaxIso.split('-').map(Number);
+      const cur = new Date(minY, minM - 1, minD);
+      const end = new Date(maxY, maxM - 1, maxD);
 
-      if (!map.has(dateStr)) {
+      // Giới hạn an toàn tối đa 365 ngày
+      let safetyCounter = 0;
+      while (cur.getTime() <= end.getTime() && safetyCounter < 365) {
+        safetyCounter++;
+        const dd = String(cur.getDate()).padStart(2, '0');
+        const mm = String(cur.getMonth() + 1).padStart(2, '0');
+        const yyyy = cur.getFullYear();
+        const dateStr = `${dd}/${mm}/${yyyy}`;
+        const isoStr = `${yyyy}-${mm}-${dd}`;
         const dow = VIETNAMESE_DAYS[cur.getDay()] || '';
-        map.set(dateStr, {
-          isoDate: isoStr,
-          displayDate: `${dateStr} (${dow})`,
-          count: 0,
-          users: new Set(),
-          web: 0,
-          app: 0,
-        });
+        const shortDow = SHORT_VIETNAMESE_DAYS[cur.getDay()] || '';
+
+        if (!map.has(dateStr)) {
+          map.set(dateStr, {
+            isoDate: isoStr,
+            displayDate: `${dateStr} (${dow})`,
+            shortDisplayDate: `${dd}/${mm} (${shortDow})`,
+            count: 0,
+            users: new Set(),
+            web: 0,
+            app: 0,
+          });
+        }
+        cur.setDate(cur.getDate() + 1);
       }
-      cur.setDate(cur.getDate() + 1);
     }
   }
 
@@ -755,6 +782,7 @@ export function computeDailyStats(records: AccessRecord[], fillContinuousDays: b
       date,
       isoDate: data.isoDate,
       displayDate: data.displayDate,
+      shortDisplayDate: data.shortDisplayDate,
       count: data.count,
       uniqueUsers: data.users.size,
       web: data.web,

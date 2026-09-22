@@ -112,11 +112,11 @@ export function TimeTrendChart({
     };
   }, [activeDailyData]);
 
-  // Tìm displayDate của selectedDate nếu có
+  // Tìm displayDate hoặc shortDisplayDate của selectedDate nếu có
   const selectedDayDisplay = useMemo(() => {
     if (!selectedDate || selectedDate === 'ALL') return null;
     const found = activeDailyData.find((d) => d.date === selectedDate);
-    return found ? found.displayDate : null;
+    return found ? (found.shortDisplayDate || found.displayDate) : null;
   }, [selectedDate, activeDailyData]);
 
   // Custom Tooltip cho Line Chart
@@ -330,7 +330,7 @@ export function TimeTrendChart({
       </div>
 
       {/* Chart container */}
-      <div className="h-72 w-full pt-1">
+      <div className="h-80 sm:h-96 w-full pt-1">
         <ResponsiveContainer width="100%" height="100%">
           {viewMode === 'daily' ? (
             chartType === 'line' ? (
@@ -346,7 +346,7 @@ export function TimeTrendChart({
               >
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis
-                  dataKey="displayDate"
+                  dataKey="shortDisplayDate"
                   tick={{ fontSize: 11, fill: '#475569', fontWeight: 500 }}
                   axisLine={{ stroke: '#cbd5e1' }}
                   tickLine={{ stroke: '#cbd5e1' }}
@@ -457,7 +457,7 @@ export function TimeTrendChart({
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="displayDate" tick={{ fontSize: 11, fill: '#475569' }} axisLine={{ stroke: '#cbd5e1' }} />
+                <XAxis dataKey="shortDisplayDate" tick={{ fontSize: 11, fill: '#475569' }} axisLine={{ stroke: '#cbd5e1' }} />
                 <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#cbd5e1' }} />
                 <Tooltip content={<CustomDailyTooltip />} />
                 <Legend
@@ -485,7 +485,7 @@ export function TimeTrendChart({
                 }}
               >
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="displayDate" tick={{ fontSize: 11, fill: '#475569' }} axisLine={{ stroke: '#cbd5e1' }} />
+                <XAxis dataKey="shortDisplayDate" tick={{ fontSize: 11, fill: '#475569' }} axisLine={{ stroke: '#cbd5e1' }} />
                 <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#cbd5e1' }} />
                 <Tooltip content={<CustomDailyTooltip />} />
                 <Legend

@@ -31,6 +31,7 @@ export const QuickSyncBar: React.FC<QuickSyncBarProps> = ({
   onApplyData,
   lastSyncTime,
   currentCount,
+  onOpenDataSourceModal,
   onOpenScheduleModal,
   scheduleConfig,
 }) => {
@@ -61,9 +62,10 @@ export const QuickSyncBar: React.FC<QuickSyncBarProps> = ({
         message: `Đã cập nhật thành công ${res.recordCount.toLocaleString()} bản ghi mới nhất từ nguồn dữ liệu đã lưu! (Thời gian: ${res.syncedTimeFormatted})`,
       });
     } catch (err: any) {
+      setIsEditingUrl(true);
       setStatus({
         type: 'error',
-        message: err.message || 'Lỗi khi kết nối và cập nhật dữ liệu từ nguồn.',
+        message: err.message || 'Lỗi khi kết nối và cập nhật dữ liệu từ nguồn. Vui lòng dán lại link Google Sheets của bạn.',
       });
     } finally {
       setLoading(false);
@@ -144,6 +146,18 @@ export const QuickSyncBar: React.FC<QuickSyncBarProps> = ({
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {onOpenDataSourceModal && (
+            <button
+              type="button"
+              onClick={onOpenDataSourceModal}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl transition-colors cursor-pointer shadow-2xs"
+              title="Quản lý link nguồn dữ liệu và kiểm tra kết nối chi tiết"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" />
+              <span>Nguồn & Link</span>
+            </button>
+          )}
+
           {onOpenScheduleModal && (
             <button
               type="button"

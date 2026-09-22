@@ -148,6 +148,7 @@ export interface DailyStat {
   date: string; // DD/MM/YYYY
   isoDate: string;
   displayDate: string;
+  shortDisplayDate?: string;
   count: number;
   uniqueUsers: number;
   web: number;
