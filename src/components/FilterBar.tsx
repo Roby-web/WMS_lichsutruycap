@@ -14,7 +14,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { FilterState, TimePreset } from '../types';
-import { PresetPeriods, formatToIso } from '../utils/dateRanges';
+import { PresetPeriods, formatToIso, DataDateRange } from '../utils/dateRanges';
 import { DateRangePicker } from './DateRangePicker';
 
 interface AvailableAccountItem {
@@ -37,6 +37,7 @@ interface FilterBarProps {
   excludedTestCount?: number;
   anchorDate?: Date;
   presetPeriods?: PresetPeriods;
+  dataDateRange?: DataDateRange;
 }
 
 export const FilterBar: React.FC<FilterBarProps> = ({
@@ -52,6 +53,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   excludedTestCount = 0,
   anchorDate,
   presetPeriods,
+  dataDateRange,
 }) => {
   const isFiltered =
     Boolean(filters.search.trim()) ||
@@ -274,6 +276,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             filters={filters}
             onFilterChange={onFilterChange}
             anchorDate={anchorDate}
+            dataDateRange={dataDateRange}
           />
         </div>
 

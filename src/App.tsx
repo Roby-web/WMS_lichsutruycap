@@ -18,7 +18,7 @@ import {
   computeUserDailyAvgRanking,
   computeDepartmentDailyAvgStats,
 } from './utils/csvParser';
-import { getAnchorDate, resolvePresetPeriods } from './utils/dateRanges';
+import { getAnchorDate, resolvePresetPeriods, getDataDateRange } from './utils/dateRanges';
 import { FilterState, AutoSyncScheduleConfig } from './types';
 import { Header } from './components/Header';
 import { KpiCards } from './components/KpiCards';
@@ -49,8 +49,8 @@ import {
 } from './utils/scheduleService';
 import { LayoutDashboard, TableProperties, Flame, Activity, CheckCircle2, AlertCircle, X, CalendarClock } from 'lucide-react';
 
-const STORAGE_KEY_CSV = 'access_dashboard_custom_csv_v4';
-const STORAGE_KEY_NAME = 'access_dashboard_custom_name_v4';
+const STORAGE_KEY_CSV = 'access_dashboard_custom_csv_v5';
+const STORAGE_KEY_NAME = 'access_dashboard_custom_name_v5';
 const STORAGE_KEY_EXCLUDE_TEST = 'wms_exclude_test_records_v1';
 
 const getInitialExcludeTest = (): boolean => {
@@ -64,7 +64,7 @@ const getInitialExcludeTest = (): boolean => {
 
 const INITIAL_FILTERS: FilterState = {
   search: '',
-  timePreset: 'all', // Mặc định show tất cả các ngày (toàn bộ thời gian)
+  timePreset: 'all', // Mặc định show tất cả các ngày (toàn bộ thời gian từ 11/09 đến 21/09)
   customRange: {
     startDate: '',
     endDate: '',
@@ -81,18 +81,17 @@ const INITIAL_FILTERS: FilterState = {
 };
 
 export default function App() {
-  // Active dataset (chuẩn 897 dòng dữ liệu từ link)
+  // Active dataset (chuẩn 897 dòng dữ liệu từ link, bắt đầu từ ngày 11/09/2026)
   const [csvText, setCsvText] = useState<string>(() => {
     try {
-      // Clear old v3 or stale datasets to guarantee exact 897 records from link
-      const oldV3 = localStorage.getItem('access_dashboard_custom_csv_v3');
-      if (oldV3) {
-        localStorage.removeItem('access_dashboard_custom_csv_v3');
-      }
+      // Clear old v3/v4 stale datasets that lacked 11/09/2026 data
+      ['access_dashboard_custom_csv_v3', 'access_dashboard_custom_csv_v4'].forEach(k => {
+        try { localStorage.removeItem(k); } catch {}
+      });
       const saved = localStorage.getItem(STORAGE_KEY_CSV);
       if (saved && saved.trim().length > 30) {
-        // If old 1757 records cache is present, discard and use fresh 897 records
-        if (saved.includes('1757,thiha') || saved.includes('1734,thiha')) {
+        // If saved dataset doesn't contain 11/09/2026 data or contains stale thiha repeat, reset to fresh
+        if (!saved.includes('11/09/2026') || saved.includes('897,thiha')) {
           localStorage.removeItem(STORAGE_KEY_CSV);
           return RAW_ACCESS_CSV;
         }
@@ -240,10 +239,15 @@ export default function App() {
     return getAnchorDate(baseRecords);
   }, [baseRecords]);
 
+  // Dải ngày có dữ liệu thực tế trong dataset (từ ngày đầu tiên có dữ liệu đến ngày mới nhất)
+  const dataDateRange = useMemo(() => {
+    return getDataDateRange(baseRecords, anchorDate);
+  }, [baseRecords, anchorDate]);
+
   // Giải quyết khoảng thời gian hiện tại và cùng kỳ trước dựa trên Preset được chọn
   const presetPeriods = useMemo(() => {
-    return resolvePresetPeriods(filters.timePreset, anchorDate, filters.customRange);
-  }, [filters.timePreset, anchorDate, filters.customRange]);
+    return resolvePresetPeriods(filters.timePreset, anchorDate, filters.customRange, dataDateRange);
+  }, [filters.timePreset, anchorDate, filters.customRange, dataDateRange]);
 
   // Filtered records trong kỳ đang chọn
   const filteredRecords = useMemo(() => {
@@ -627,6 +631,7 @@ export default function App() {
           excludedTestCount={excludedTestCount}
           anchorDate={anchorDate}
           presetPeriods={presetPeriods}
+          dataDateRange={dataDateRange}
         />
 
         {/* 2. KPI Metrics Summary (Tự động cập nhật theo bộ lọc) */}

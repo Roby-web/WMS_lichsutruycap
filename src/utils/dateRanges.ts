@@ -49,6 +49,56 @@ export function getAnchorDate(records: AccessRecord[]): Date {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
+export interface DataDateRange {
+  minIso: string;
+  maxIso: string;
+  minVn: string;
+  maxVn: string;
+  minDate: Date;
+  maxDate: Date;
+}
+
+/**
+ * Trích xuất dải ngày có dữ liệu thực tế từ các bản ghi (từ ngày đầu tiên có dữ liệu đến ngày mới nhất)
+ */
+export function getDataDateRange(records: AccessRecord[], fallbackAnchor?: Date): DataDateRange {
+  const fallback = fallbackAnchor || new Date();
+  let minIso = '';
+  let maxIso = '';
+
+  for (const r of records) {
+    if (r.isoDate && r.isoDate !== 'N/A') {
+      if (!minIso || r.isoDate < minIso) minIso = r.isoDate;
+      if (!maxIso || r.isoDate > maxIso) maxIso = r.isoDate;
+    }
+  }
+
+  if (!minIso || !maxIso) {
+    const todayIso = formatToIso(fallback);
+    const todayVn = formatToVnDate(fallback);
+    return {
+      minIso: todayIso,
+      maxIso: todayIso,
+      minVn: todayVn,
+      maxVn: todayVn,
+      minDate: fallback,
+      maxDate: fallback,
+    };
+  }
+
+  const [minY, minM, minD] = minIso.split('-').map(Number);
+  const [maxY, maxM, maxD] = maxIso.split('-').map(Number);
+
+  return {
+    minIso,
+    maxIso,
+    minVn: formatIsoToVnDate(minIso),
+    maxVn: formatIsoToVnDate(maxIso),
+    minDate: new Date(minY, minM - 1, minD),
+    maxDate: new Date(maxY, maxM - 1, maxD),
+  };
+}
+
 export interface PeriodDateRange {
   startIso: string;
   endIso: string;
@@ -68,7 +118,8 @@ export interface PresetPeriods {
 export function resolvePresetPeriods(
   preset: TimePreset,
   anchorDate: Date,
-  customRange?: CustomDateRange
+  customRange?: CustomDateRange,
+  dataDateRange?: DataDateRange
 ): PresetPeriods {
   const anchorYear = anchorDate.getFullYear();
   const anchorMonth = anchorDate.getMonth();
@@ -323,11 +374,21 @@ export function resolvePresetPeriods(
 
     case 'all':
     default: {
+      const startIso = dataDateRange?.minIso || '';
+      const endIso = dataDateRange?.maxIso || '';
+      const startVn = dataDateRange?.minVn || (startIso ? formatIsoToVnDate(startIso) : '');
+      const endVn = dataDateRange?.maxVn || (endIso ? formatIsoToVnDate(endIso) : '');
+
+      let displayLabel = 'Tất cả thời gian';
+      if (startVn && endVn) {
+        displayLabel = startVn === endVn ? `Tất cả (${startVn})` : `Tất cả (${startVn} - ${endVn})`;
+      }
+
       return {
         current: {
-          startIso: '',
-          endIso: '',
-          label: 'Tất cả thời gian',
+          startIso,
+          endIso,
+          label: displayLabel,
           shortLabel: 'Tất cả',
         },
         previous: {

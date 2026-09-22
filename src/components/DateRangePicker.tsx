@@ -6,12 +6,13 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { FilterState, TimePreset } from '../types';
-import { formatToIso, formatIsoToVnDate } from '../utils/dateRanges';
+import { formatToIso, formatIsoToVnDate, DataDateRange } from '../utils/dateRanges';
 
 interface DateRangePickerProps {
   filters: FilterState;
   onFilterChange: (newFilters: FilterState) => void;
   anchorDate?: Date;
+  dataDateRange?: DataDateRange;
 }
 
 const VIETNAMESE_WEEKDAYS = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
@@ -36,6 +37,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
   filters,
   onFilterChange,
   anchorDate,
+  dataDateRange,
 }) => {
   const baseAnchor = anchorDate || new Date();
   const [isOpen, setIsOpen] = useState(false);
@@ -90,8 +92,8 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
         return { start: s, end: e, preset: 'custom' };
       }
       case 'all': {
-        const s = new Date(anchorY - 1, anchorM, 1);
-        const e = new Date(anchorY, anchorM, anchorD);
+        const s = dataDateRange?.minDate || new Date(anchorY, anchorM, anchorD);
+        const e = dataDateRange?.maxDate || new Date(anchorY, anchorM, anchorD);
         return { start: s, end: e, preset: 'all' };
       }
       default: {
@@ -208,8 +210,8 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
       s = new Date(anchorY, anchorM, anchorD - 6);
       e = new Date(anchorY, anchorM, anchorD);
     } else if (presetKey === 'all') {
-      s = new Date(anchorY - 1, anchorM, 1);
-      e = new Date(anchorY, anchorM, anchorD);
+      s = dataDateRange?.minDate || new Date(anchorY, anchorM, anchorD);
+      e = dataDateRange?.maxDate || new Date(anchorY, anchorM, anchorD);
     }
 
     setTempStart(s);
@@ -286,7 +288,10 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
         ...filters,
         timePreset: 'all',
         date: 'ALL',
-        customRange: { startDate: '', endDate: '' },
+        customRange: {
+          startDate: dataDateRange?.minIso || '',
+          endDate: dataDateRange?.maxIso || '',
+        },
       });
     } else if (
       activePreset === 'today' ||
@@ -321,6 +326,11 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
     const curEndIso = filters.customRange.endDate || formatToIso(currentInit.end);
 
     if (filters.timePreset === 'all') {
+      if (dataDateRange?.minVn && dataDateRange?.maxVn) {
+        return dataDateRange.minVn === dataDateRange.maxVn
+          ? `${dataDateRange.minVn} (Tất cả)`
+          : `${dataDateRange.minVn} - ${dataDateRange.maxVn} (Tất cả)`;
+      }
       return 'Tất cả thời gian';
     }
 
@@ -482,7 +492,14 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
                         : 'text-slate-700 hover:bg-slate-100'
                     }`}
                   >
-                    Tất cả
+                    <div className="flex items-center justify-between">
+                      <span>Tất cả thời gian</span>
+                    </div>
+                    {dataDateRange?.minVn && dataDateRange?.maxVn && (
+                      <div className={`text-[10px] mt-0.5 font-normal ${activePreset === 'all' ? 'text-pink-100' : 'text-slate-500'}`}>
+                        {dataDateRange.minVn} - {dataDateRange.maxVn}
+                      </div>
+                    )}
                   </button>
                 </div>
               </div>
