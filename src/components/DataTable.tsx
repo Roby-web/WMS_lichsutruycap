@@ -17,13 +17,21 @@ import { AccessRecord } from '../types';
 
 interface DataTableProps {
   records: AccessRecord[];
+  selectedAccount?: string;
   onSelectAccount: (account: string) => void;
   onSelectDepartment: (dept: string) => void;
+  onOpenDetailModal?: (account: string) => void;
 }
 
 type SortField = 'stt' | 'account' | 'feature' | 'timestamp' | 'platform' | 'os' | 'department' | 'ip';
 
-export function DataTable({ records, onSelectAccount, onSelectDepartment }: DataTableProps) {
+export function DataTable({
+  records,
+  selectedAccount,
+  onSelectAccount,
+  onSelectDepartment,
+  onOpenDetailModal,
+}: DataTableProps) {
   const [sortField, setSortField] = useState<SortField>('timestamp');
   const [sortAsc, setSortAsc] = useState<boolean>(false);
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -236,7 +244,9 @@ export function DataTable({ records, onSelectAccount, onSelectDepartment }: Data
               paginatedRecords.map((record) => (
                 <tr
                   key={record.stt}
-                  className="hover:bg-blue-50/40 transition-colors group"
+                  className={`transition-colors group ${
+                    selectedAccount === record.account ? 'bg-blue-50/60 font-medium' : 'hover:bg-blue-50/40'
+                  }`}
                 >
                   <td className="py-2.5 px-3 text-slate-400 font-mono text-[11px]">
                     #{record.stt}
@@ -244,10 +254,20 @@ export function DataTable({ records, onSelectAccount, onSelectDepartment }: Data
                   <td className="py-2.5 px-3">
                     <button
                       onClick={() => onSelectAccount(record.account)}
-                      className="font-bold text-slate-800 group-hover:text-blue-600 hover:underline cursor-pointer flex items-center gap-1.5"
+                      className={`cursor-pointer flex items-center gap-1.5 hover:underline ${
+                        selectedAccount === record.account
+                          ? 'font-extrabold text-blue-700'
+                          : 'font-bold text-slate-800 group-hover:text-blue-600'
+                      }`}
+                      title="Click để lọc toàn bộ dashboard theo tài khoản này"
                     >
-                      <User className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500" />
+                      <User className={`w-3.5 h-3.5 ${selectedAccount === record.account ? 'text-blue-600' : 'text-slate-400 group-hover:text-blue-500'}`} />
                       <span>{record.account}</span>
+                      {selectedAccount === record.account && (
+                        <span className="text-[10px] bg-blue-100 text-blue-700 px-1 py-0.2 rounded font-semibold">
+                          Đang lọc
+                        </span>
+                      )}
                     </button>
                   </td>
                   <td className="py-2.5 px-3">
@@ -284,7 +304,13 @@ export function DataTable({ records, onSelectAccount, onSelectDepartment }: Data
                   </td>
                   <td className="py-2.5 px-3 text-right">
                     <button
-                      onClick={() => onSelectAccount(record.account)}
+                      onClick={() => {
+                        if (onOpenDetailModal) {
+                          onOpenDetailModal(record.account);
+                        } else {
+                          onSelectAccount(record.account);
+                        }
+                      }}
                       className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-1 rounded transition-colors cursor-pointer"
                       title="Xem hồ sơ & lịch sử tài khoản"
                     >

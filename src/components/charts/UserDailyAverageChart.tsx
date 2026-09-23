@@ -35,6 +35,8 @@ interface UserDailyAverageChartProps {
   dailyUserAvgData: DailyUserFrequencyStat[];
   userDailyRanking: UserDailyAvgStat[];
   departmentDailyAvg: DepartmentDailyAvgStat[];
+  selectedAccount?: string;
+  selectedDepartment?: string;
   onSelectAccount?: (account: string) => void;
   onSelectDepartment?: (dept: string) => void;
 }
@@ -43,6 +45,8 @@ export const UserDailyAverageChart: React.FC<UserDailyAverageChartProps> = ({
   dailyUserAvgData,
   userDailyRanking,
   departmentDailyAvg,
+  selectedAccount,
+  selectedDepartment,
   onSelectAccount,
   onSelectDepartment,
 }) => {
@@ -346,10 +350,11 @@ export const UserDailyAverageChart: React.FC<UserDailyAverageChartProps> = ({
               <YAxis
                 type="category"
                 dataKey="account"
+                interval={0}
                 tick={{ fontSize: 11, fill: '#334155', fontWeight: 600 }}
                 tickLine={false}
                 axisLine={false}
-                width={85}
+                width={100}
               />
               <Tooltip
                 content={({ active, payload }) => {
@@ -398,12 +403,19 @@ export const UserDailyAverageChart: React.FC<UserDailyAverageChartProps> = ({
                 }}
                 className="cursor-pointer"
               >
-                {topUsersData.map((entry, idx) => (
-                  <Cell
-                    key={`user-bar-${entry.account || idx}`}
-                    fill={idx === 0 ? '#7c3aed' : idx < 3 ? '#8b5cf6' : '#a78bfa'}
-                  />
-                ))}
+                {topUsersData.map((entry, idx) => {
+                  const isSelected = selectedAccount === entry.account;
+                  const isAnySelected = Boolean(selectedAccount && selectedAccount !== 'ALL');
+                  return (
+                    <Cell
+                      key={`user-bar-${entry.account || idx}`}
+                      fill={isSelected ? '#2563eb' : idx === 0 ? '#7c3aed' : idx < 3 ? '#8b5cf6' : '#a78bfa'}
+                      opacity={isAnySelected ? (isSelected ? 1 : 0.35) : 1}
+                      stroke={isSelected ? '#1e40af' : 'none'}
+                      strokeWidth={isSelected ? 2 : 0}
+                    />
+                  );
+                })}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -427,10 +439,11 @@ export const UserDailyAverageChart: React.FC<UserDailyAverageChartProps> = ({
               <YAxis
                 type="category"
                 dataKey="department"
+                interval={0}
                 tick={{ fontSize: 11, fill: '#334155', fontWeight: 600 }}
                 tickLine={false}
                 axisLine={false}
-                width={120}
+                width={125}
               />
               <Tooltip
                 content={({ active, payload }) => {
@@ -472,12 +485,19 @@ export const UserDailyAverageChart: React.FC<UserDailyAverageChartProps> = ({
                 }}
                 className="cursor-pointer"
               >
-                {topDeptsData.map((entry, idx) => (
-                  <Cell
-                    key={`dept-bar-${entry.department || idx}`}
-                    fill={idx === 0 ? '#d97706' : idx < 3 ? '#f59e0b' : '#fbbf24'}
-                  />
-                ))}
+                {topDeptsData.map((entry, idx) => {
+                  const isSelected = selectedDepartment === entry.department;
+                  const isAnySelected = Boolean(selectedDepartment && selectedDepartment !== 'ALL');
+                  return (
+                    <Cell
+                      key={`dept-bar-${entry.department || idx}`}
+                      fill={isSelected ? '#059669' : idx === 0 ? '#d97706' : idx < 3 ? '#f59e0b' : '#fbbf24'}
+                      opacity={isAnySelected ? (isSelected ? 1 : 0.35) : 1}
+                      stroke={isSelected ? '#047857' : 'none'}
+                      strokeWidth={isSelected ? 2 : 0}
+                    />
+                  );
+                })}
               </Bar>
             </BarChart>
           </ResponsiveContainer>

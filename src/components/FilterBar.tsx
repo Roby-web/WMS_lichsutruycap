@@ -38,6 +38,7 @@ interface FilterBarProps {
   anchorDate?: Date;
   presetPeriods?: PresetPeriods;
   dataDateRange?: DataDateRange;
+  onOpenAccountModal?: (account: string) => void;
 }
 
 export const FilterBar: React.FC<FilterBarProps> = ({
@@ -54,6 +55,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   anchorDate,
   presetPeriods,
   dataDateRange,
+  onOpenAccountModal,
 }) => {
   const isFiltered =
     Boolean(filters.search.trim()) ||
@@ -256,14 +258,25 @@ export const FilterBar: React.FC<FilterBarProps> = ({
                 Đang tập trung phân tích riêng cho tài khoản: <strong className="font-bold">@{filters.account}</strong>
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => handleAccountChange('ALL')}
-              className="text-emerald-700 hover:text-emerald-900 font-semibold inline-flex items-center gap-1 cursor-pointer"
-            >
-              <X className="w-3.5 h-3.5" />
-              <span>Xem lại tất cả người</span>
-            </button>
+            <div className="flex items-center gap-3">
+              {onOpenAccountModal && (
+                <button
+                  type="button"
+                  onClick={() => onOpenAccountModal(filters.account)}
+                  className="text-emerald-800 hover:text-emerald-950 font-semibold underline cursor-pointer"
+                >
+                  Xem hồ sơ chi tiết
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => handleAccountChange('ALL')}
+                className="text-emerald-700 hover:text-emerald-900 font-semibold inline-flex items-center gap-1 cursor-pointer bg-white/70 hover:bg-white px-2 py-0.5 rounded border border-emerald-300 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Xem lại tất cả người</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
