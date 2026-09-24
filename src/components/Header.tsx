@@ -164,10 +164,10 @@ export function Header({
             onClick={onUpdateData}
             disabled={isUpdating}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 disabled:bg-blue-400 rounded-lg shadow-sm shadow-blue-500/20 transition-all cursor-pointer"
-            title="Bấm vào để cập nhật luôn dữ liệu mới nhất ở link đã lưu, không cần bổ sung link"
+            title="Bấm vào để tự động cập nhật dữ liệu mới nhất từ link data"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isUpdating ? 'animate-spin' : ''}`} />
-            <span>{isUpdating ? 'Đang cập nhật...' : 'Cập nhật dữ liệu'}</span>
+            <span>{isUpdating ? 'Đang cập nhật từ link...' : 'Cập nhật dữ liệu'}</span>
           </button>
 
           {/* Button Đặt lịch tự động 10h sáng */}

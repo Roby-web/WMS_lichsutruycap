@@ -59,7 +59,7 @@ export const QuickSyncBar: React.FC<QuickSyncBarProps> = ({
       onApplyData(res.csvText, `Google Sheets (${res.recordCount} dòng)`);
       setStatus({
         type: 'success',
-        message: `Đã cập nhật thành công ${res.recordCount.toLocaleString()} bản ghi mới nhất từ nguồn dữ liệu đã lưu! (Thời gian: ${res.syncedTimeFormatted})`,
+        message: `Đã tự động cập nhật dữ liệu mới nhất từ link data thành công! (${res.recordCount.toLocaleString()} bản ghi, cập nhật lúc: ${res.syncedTimeFormatted})`,
       });
     } catch (err: any) {
       setIsEditingUrl(true);
@@ -176,12 +176,12 @@ export const QuickSyncBar: React.FC<QuickSyncBarProps> = ({
             onClick={() => handleUpdateData()}
             disabled={loading}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 disabled:bg-blue-400 rounded-xl shadow-sm shadow-blue-500/25 transition-all cursor-pointer"
-            title="Bấm vào để cập nhật luôn dữ liệu mới nhất ở link đã lưu, không cần bổ sung link"
+            title="Bấm vào để tự động cập nhật dữ liệu mới nhất từ link data"
           >
             {loading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Đang cập nhật dữ liệu...</span>
+                <span>Đang cập nhật từ link...</span>
               </>
             ) : (
               <>

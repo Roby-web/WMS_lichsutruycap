@@ -49,8 +49,8 @@ import {
 } from './utils/scheduleService';
 import { LayoutDashboard, TableProperties, Flame, Activity, CheckCircle2, AlertCircle, X, CalendarClock } from 'lucide-react';
 
-const STORAGE_KEY_CSV = 'access_dashboard_custom_csv_v6';
-const STORAGE_KEY_NAME = 'access_dashboard_custom_name_v6';
+const STORAGE_KEY_CSV = 'access_dashboard_custom_csv_v7';
+const STORAGE_KEY_NAME = 'access_dashboard_custom_name_v7';
 const STORAGE_KEY_EXCLUDE_TEST = 'wms_exclude_test_records_v1';
 
 const getInitialExcludeTest = (): boolean => {
@@ -64,7 +64,7 @@ const getInitialExcludeTest = (): boolean => {
 
 const INITIAL_FILTERS: FilterState = {
   search: '',
-  timePreset: 'all', // Mặc định show tất cả các ngày (toàn bộ thời gian từ 11/09 đến 22/09)
+  timePreset: 'all', // Mặc định show tất cả các ngày (toàn bộ thời gian từ 11/09 đến 23/09)
   customRange: {
     startDate: '',
     endDate: '',
@@ -81,17 +81,17 @@ const INITIAL_FILTERS: FilterState = {
 };
 
 export default function App() {
-  // Active dataset (chuẩn 945 dòng dữ liệu mới nhất từ link, từ 11/09/2026 đến 22/09/2026)
+  // Active dataset (chuẩn 993 dòng dữ liệu mới nhất từ link, từ 11/09/2026 đến 23/09/2026)
   const [csvText, setCsvText] = useState<string>(() => {
     try {
-      // Clear old stale datasets that lacked 22/09/2026 or 11/09/2026 data
-      ['access_dashboard_custom_csv_v3', 'access_dashboard_custom_csv_v4', 'access_dashboard_custom_csv_v5'].forEach(k => {
+      // Clear old stale datasets that lacked 23/09/2026 or 11/09/2026 data
+      ['access_dashboard_custom_csv_v3', 'access_dashboard_custom_csv_v4', 'access_dashboard_custom_csv_v5', 'access_dashboard_custom_csv_v6'].forEach(k => {
         try { localStorage.removeItem(k); } catch {}
       });
       const saved = localStorage.getItem(STORAGE_KEY_CSV);
       if (saved && saved.trim().length > 30) {
-        // If saved dataset doesn't contain both 11/09/2026 and 22/09/2026 data, reset to fresh
-        if (!saved.includes('11/09/2026') || !saved.includes('22/09/2026')) {
+        // If saved dataset doesn't contain both 11/09/2026 and 23/09/2026 data, reset to fresh
+        if (!saved.includes('11/09/2026') || !saved.includes('23/09/2026')) {
           localStorage.removeItem(STORAGE_KEY_CSV);
           return RAW_ACCESS_CSV;
         }
@@ -105,10 +105,10 @@ export default function App() {
   const [activeFileName, setActiveFileName] = useState<string>(() => {
     try {
       const savedName = localStorage.getItem(STORAGE_KEY_NAME);
-      if (savedName && !savedName.includes('1757') && !savedName.includes('897')) return savedName;
-      return 'Lich_su_truy_cap_945_records.csv';
+      if (savedName && !savedName.includes('1757') && !savedName.includes('897') && !savedName.includes('945')) return savedName;
+      return 'Lich_su_truy_cap_993_records.csv';
     } catch {
-      return 'Lich_su_truy_cap_945_records.csv';
+      return 'Lich_su_truy_cap_993_records.csv';
     }
   });
 
@@ -336,7 +336,7 @@ export default function App() {
 
   const handleResetData = () => {
     setCsvText(RAW_ACCESS_CSV);
-    setActiveFileName('Lich_su_truy_cap_945_records.csv');
+    setActiveFileName('Lich_su_truy_cap_993_records.csv');
     setFilters((prev) => ({
       ...INITIAL_FILTERS,
       excludeTestAccounts: prev.excludeTestAccounts, // Giữ nguyên tùy chọn loại bỏ test
@@ -375,7 +375,7 @@ export default function App() {
       }
       setSyncToast({
         type: 'success',
-        message: `Đã cập nhật thành công ${res.recordCount.toLocaleString()} bản ghi mới nhất từ nguồn dữ liệu đã lưu! (${res.syncedTimeFormatted})`,
+        message: `Đã tự động cập nhật dữ liệu mới nhất từ link data thành công! (${res.recordCount.toLocaleString()} bản ghi, cập nhật lúc: ${res.syncedTimeFormatted})`,
       });
     } catch (err: any) {
       setSyncToast({

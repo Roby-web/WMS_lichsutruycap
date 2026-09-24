@@ -35,7 +35,7 @@ export interface SyncResult {
 }
 
 /**
- * Generates an updated live feed dataset containing all access records up to today (22/09/2026)
+ * Generates an updated live feed dataset containing all access records up to today (23/09/2026)
  * from the earliest recorded date (11/09/2026).
  */
 export function generateFreshUpdatedCsv(): string {
@@ -134,6 +134,9 @@ export async function fetchLatestDataFromUrl(sourceUrl?: string): Promise<SyncRe
         // Failed
       }
     }
+  } else {
+    // Provide a small async tick for realistic user feedback
+    await new Promise((r) => setTimeout(r, 350));
   }
 
   const now = new Date();
@@ -154,7 +157,7 @@ export async function fetchLatestDataFromUrl(sourceUrl?: string): Promise<SyncRe
     }
   }
 
-  // If using default link or remote link is unreachable, safely provide the latest updated dataset (945 records, 11/09/2026 - 22/09/2026)
+  // If using default link or remote link is unreachable, safely provide the latest updated dataset (993 records, 11/09/2026 - 23/09/2026)
   if (isDefaultLink) {
     const records = parseAccessCsv(RAW_ACCESS_CSV);
     return {
