@@ -35,7 +35,7 @@ export interface SyncResult {
 }
 
 /**
- * Generates an updated live feed dataset containing all access records up to today (23/09/2026)
+ * Generates an updated live feed dataset containing all access records up to today (08/10/2026)
  * from the earliest recorded date (11/09/2026).
  */
 export function generateFreshUpdatedCsv(): string {

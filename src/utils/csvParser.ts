@@ -82,7 +82,10 @@ export function parseAccessCsv(csvText: string): AccessRecord[] {
     const os = (parts[5 + offset] || 'Windows').trim();
     const department = (parts[6 + offset] || 'SD').trim();
     const role = (parts[7 + offset] || 'BBT').trim();
-    const ip = (parts[8 + offset] || '127.0.0.1').trim();
+    const rawCol8 = (parts[8 + offset] || '').trim();
+    const pageviewsNum = parseInt(rawCol8, 10);
+    const pageviews = !isNaN(pageviewsNum) && pageviewsNum > 0 ? pageviewsNum : 1;
+    const ip = rawCol8 || '127.0.0.1';
 
     if (!account) continue;
 
@@ -172,6 +175,7 @@ export function parseAccessCsv(csvText: string): AccessRecord[] {
       department,
       role,
       ip,
+      pageviews,
       timestamp: epochMs,
     });
   }

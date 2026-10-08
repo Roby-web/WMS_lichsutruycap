@@ -13,6 +13,7 @@ export interface AccessRecord {
   department: string;
   role: string;
   ip: string;
+  pageviews?: number;
   timestamp: number; // epoch ms
 }
 
