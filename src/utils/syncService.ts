@@ -35,7 +35,7 @@ export interface SyncResult {
 }
 
 /**
- * Generates an updated live feed dataset containing all access records up to today (08/10/2026)
+ * Generates an updated live feed dataset containing all access records up to today (02/11/2026)
  * from the earliest recorded date (11/09/2026).
  */
 export function generateFreshUpdatedCsv(): string {
@@ -45,14 +45,40 @@ export function generateFreshUpdatedCsv(): string {
 export async function fetchLatestDataFromUrl(sourceUrl?: string): Promise<SyncResult> {
   const cleanUrl = (sourceUrl && sourceUrl.trim()) || DEFAULT_DATA_SOURCE_URL;
   const isDefaultLink = !sourceUrl || !sourceUrl.trim() || cleanUrl.includes('1_wms_log_history_live_source');
+  const isLocalAsset = cleanUrl.includes('assets/aistudio') || cleanUrl.includes('WMS_LogHistory') || cleanUrl.startsWith('/assets/');
   const targetCsvUrl = convertUrlToCsvEndpoint(cleanUrl);
 
   let text = '';
   let success = false;
   let lastErrorMessage = '';
 
-  // Only attempt network fetch if it's NOT the dummy placeholder link
-  if (!isDefaultLink) {
+  // 0. If local asset path, fetch directly from static assets
+  if (isLocalAsset) {
+    const assetCandidates = [
+      cleanUrl,
+      '/assets/aistudio/WMS_LogHistory_aed33497',
+      '/assets/aistudio/WMS_LogHistory.csv',
+      '/data/WMS_LogHistory.csv',
+    ];
+    for (const path of assetCandidates) {
+      try {
+        const res = await fetch(path);
+        if (res.ok) {
+          const raw = await res.text();
+          if (raw && raw.length > 50 && raw.includes(',')) {
+            text = raw;
+            success = true;
+            break;
+          }
+        }
+      } catch {
+        // continue
+      }
+    }
+  }
+
+  // Only attempt network fetch if it's NOT the dummy placeholder link and not already loaded
+  if (!isDefaultLink && !success) {
     // 1. Primary: Use Vite server proxy (/api/fetch-sheet) which handles Google Sheets redirects & headers
     try {
       const proxyUrl = `/api/fetch-sheet?url=${encodeURIComponent(cleanUrl)}`;
@@ -134,9 +160,26 @@ export async function fetchLatestDataFromUrl(sourceUrl?: string): Promise<SyncRe
         // Failed
       }
     }
-  } else {
+  } else if (isDefaultLink) {
+    // Check if we can fetch the latest static file, otherwise use RAW_ACCESS_CSV
+    try {
+      const res = await fetch('/assets/aistudio/WMS_LogHistory_aed33497');
+      if (res.ok) {
+        const raw = await res.text();
+        if (raw && raw.length > 50 && raw.includes(',')) {
+          text = raw;
+          success = true;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    if (!success) {
+      text = RAW_ACCESS_CSV;
+      success = true;
+    }
     // Provide a small async tick for realistic user feedback
-    await new Promise((r) => setTimeout(r, 350));
+    await new Promise((r) => setTimeout(r, 200));
   }
 
   const now = new Date();
@@ -152,12 +195,12 @@ export async function fetchLatestDataFromUrl(sourceUrl?: string): Promise<SyncRe
         recordCount: records.length,
         syncedAt: now,
         syncedTimeFormatted: timeStr,
-        sourceType: 'live_remote',
+        sourceType: isDefaultLink ? 'synced_feed' : 'live_remote',
       };
     }
   }
 
-  // If using default link or remote link is unreachable, safely provide the latest updated dataset (993 records, 11/09/2026 - 23/09/2026)
+  // If using default link or remote link is unreachable, safely provide the latest updated dataset (4,932 records, 11/09/2026 - 02/11/2026)
   if (isDefaultLink) {
     const records = parseAccessCsv(RAW_ACCESS_CSV);
     return {

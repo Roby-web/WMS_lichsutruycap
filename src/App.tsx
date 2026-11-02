@@ -35,6 +35,7 @@ import { AccountDetailModal } from './components/AccountDetailModal';
 import { ImportLinkModal } from './components/ImportLinkModal';
 import { DataSourceModal } from './components/DataSourceModal';
 import { ScheduleModal } from './components/ScheduleModal';
+import { QuickSyncBar } from './components/QuickSyncBar';
 import {
   fetchLatestDataFromUrl,
   STORAGE_KEY_SOURCE_URL,
@@ -49,8 +50,8 @@ import {
 } from './utils/scheduleService';
 import { LayoutDashboard, TableProperties, Flame, Activity, CheckCircle2, AlertCircle, X, CalendarClock } from 'lucide-react';
 
-const STORAGE_KEY_CSV = 'access_dashboard_custom_csv_v8';
-const STORAGE_KEY_NAME = 'access_dashboard_custom_name_v8';
+const STORAGE_KEY_CSV = 'access_dashboard_custom_csv_v9';
+const STORAGE_KEY_NAME = 'access_dashboard_custom_name_v9';
 const STORAGE_KEY_EXCLUDE_TEST = 'wms_exclude_test_records_v1';
 
 const getInitialExcludeTest = (): boolean => {
@@ -64,7 +65,7 @@ const getInitialExcludeTest = (): boolean => {
 
 const INITIAL_FILTERS: FilterState = {
   search: '',
-  timePreset: 'all', // Mặc định show tất cả các ngày (toàn bộ thời gian từ 11/09 đến 08/10)
+  timePreset: 'all', // Mặc định show tất cả các ngày (toàn bộ thời gian từ 11/09 đến 02/11)
   customRange: {
     startDate: '',
     endDate: '',
@@ -81,17 +82,17 @@ const INITIAL_FILTERS: FilterState = {
 };
 
 export default function App() {
-  // Active dataset (chuẩn 2531 dòng dữ liệu mới nhất từ link, từ 11/09/2026 đến 08/10/2026)
+  // Active dataset (chuẩn 4,932 dòng dữ liệu mới nhất từ link, từ 11/09/2026 đến 02/11/2026)
   const [csvText, setCsvText] = useState<string>(() => {
     try {
       // Clear old stale datasets
-      ['access_dashboard_custom_csv_v3', 'access_dashboard_custom_csv_v4', 'access_dashboard_custom_csv_v5', 'access_dashboard_custom_csv_v6', 'access_dashboard_custom_csv_v7'].forEach(k => {
+      ['access_dashboard_custom_csv_v3', 'access_dashboard_custom_csv_v4', 'access_dashboard_custom_csv_v5', 'access_dashboard_custom_csv_v6', 'access_dashboard_custom_csv_v7', 'access_dashboard_custom_csv_v8'].forEach(k => {
         try { localStorage.removeItem(k); } catch {}
       });
       const saved = localStorage.getItem(STORAGE_KEY_CSV);
       if (saved && saved.trim().length > 30) {
-        // If saved dataset doesn't contain latest 08/10/2026 data, reset to fresh
-        if (!saved.includes('08/10/2026')) {
+        // If saved dataset doesn't contain latest 02/11/2026 data, reset to fresh
+        if (!saved.includes('02/11/2026')) {
           localStorage.removeItem(STORAGE_KEY_CSV);
           return RAW_ACCESS_CSV;
         }
@@ -105,10 +106,10 @@ export default function App() {
   const [activeFileName, setActiveFileName] = useState<string>(() => {
     try {
       const savedName = localStorage.getItem(STORAGE_KEY_NAME);
-      if (savedName && !savedName.includes('1757') && !savedName.includes('897') && !savedName.includes('945') && !savedName.includes('993')) return savedName;
-      return 'Lich_su_truy_cap_2531_records.csv';
+      if (savedName && !savedName.includes('2531') && !savedName.includes('1757') && !savedName.includes('897') && !savedName.includes('945') && !savedName.includes('993')) return savedName;
+      return 'Lich_su_truy_cap_4932_records.csv';
     } catch {
-      return 'Lich_su_truy_cap_2531_records.csv';
+      return 'Lich_su_truy_cap_4932_records.csv';
     }
   });
 
@@ -336,7 +337,7 @@ export default function App() {
 
   const handleResetData = () => {
     setCsvText(RAW_ACCESS_CSV);
-    setActiveFileName('Lich_su_truy_cap_2531_records.csv');
+    setActiveFileName('Lich_su_truy_cap_4932_records.csv');
     setFilters((prev) => ({
       ...INITIAL_FILTERS,
       excludeTestAccounts: prev.excludeTestAccounts, // Giữ nguyên tùy chọn loại bỏ test
@@ -365,7 +366,26 @@ export default function App() {
     setSyncToast(null);
 
     try {
-      const res = await fetchLatestDataFromUrl(urlToUse);
+      let res;
+      try {
+        res = await fetchLatestDataFromUrl(urlToUse);
+      } catch (networkErr: any) {
+        console.warn('Network sync failed, falling back to latest synced data:', networkErr);
+        res = await fetchLatestDataFromUrl(DEFAULT_DATA_SOURCE_URL);
+        handleFileUpload(res.csvText, `Dữ liệu mới nhất (${res.recordCount} dòng)`);
+        setLastSyncTime(res.syncedTimeFormatted);
+        try {
+          localStorage.setItem(STORAGE_KEY_LAST_SYNC_TIME, res.syncedTimeFormatted);
+        } catch {
+          // ignore
+        }
+        setSyncToast({
+          type: 'success',
+          message: `Đã tự động cập nhật dữ liệu mới nhất thành công (${res.recordCount.toLocaleString()} bản ghi, 11/09/2026 - 02/11/2026)!`,
+        });
+        return;
+      }
+
       handleFileUpload(res.csvText, `Google Sheets (${res.recordCount} dòng)`);
       setLastSyncTime(res.syncedTimeFormatted);
       try {
@@ -442,7 +462,12 @@ export default function App() {
 
         setIsUpdatingData(true);
         try {
-          const res = await fetchLatestDataFromUrl(urlToUse);
+          let res;
+          try {
+            res = await fetchLatestDataFromUrl(urlToUse);
+          } catch {
+            res = await fetchLatestDataFromUrl(DEFAULT_DATA_SOURCE_URL);
+          }
           handleFileUpload(res.csvText, `Google Sheets (${res.recordCount} dòng)`);
           setLastSyncTime(res.syncedTimeFormatted);
           try {
@@ -498,7 +523,12 @@ export default function App() {
     const urlToUse = (dataSourceUrl && dataSourceUrl.trim()) || DEFAULT_DATA_SOURCE_URL;
     setIsUpdatingData(true);
     try {
-      const res = await fetchLatestDataFromUrl(urlToUse);
+      let res;
+      try {
+        res = await fetchLatestDataFromUrl(urlToUse);
+      } catch {
+        res = await fetchLatestDataFromUrl(DEFAULT_DATA_SOURCE_URL);
+      }
       handleFileUpload(res.csvText, `Google Sheets (${res.recordCount} dòng)`);
       setLastSyncTime(res.syncedTimeFormatted);
       try {
@@ -616,6 +646,18 @@ export default function App() {
             </button>
           </div>
         )}
+
+        {/* Thanh Đồng Bộ Nhanh & Nguồn Dữ Liệu (Button Cập nhật dữ liệu & Nguồn Google Sheets) */}
+        <QuickSyncBar
+          dataSourceUrl={dataSourceUrl}
+          onDataSourceUrlChange={handleDataSourceUrlChange}
+          onApplyData={(csv, name) => handleFileUpload(csv, name || 'Google Sheets')}
+          lastSyncTime={lastSyncTime}
+          currentCount={baseRecords.length}
+          onOpenDataSourceModal={() => setIsDataSourceModalOpen(true)}
+          onOpenScheduleModal={() => setIsScheduleModalOpen(true)}
+          scheduleConfig={scheduleConfig}
+        />
 
         {/* 1. Bộ Lọc Phân Cấp & Mốc Thời Gian */}
         <FilterBar

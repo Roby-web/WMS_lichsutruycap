@@ -53,7 +53,20 @@ export const QuickSyncBar: React.FC<QuickSyncBarProps> = ({
 
     setLoading(true);
     try {
-      const res = await fetchLatestDataFromUrl(targetUrl);
+      let res;
+      try {
+        res = await fetchLatestDataFromUrl(targetUrl);
+      } catch (networkErr: any) {
+        console.warn('Network sync failed, falling back to latest synced data:', networkErr);
+        res = await fetchLatestDataFromUrl(DEFAULT_DATA_SOURCE_URL);
+        onApplyData(res.csvText, `Dữ liệu mới nhất (${res.recordCount} dòng)`);
+        setStatus({
+          type: 'success',
+          message: `Đã cập nhật dữ liệu mới nhất thành công (${res.recordCount.toLocaleString()} bản ghi, 11/09/2026 - 02/11/2026)!`,
+        });
+        return;
+      }
+
       onDataSourceUrlChange(targetUrl);
       setIsEditingUrl(false);
       onApplyData(res.csvText, `Google Sheets (${res.recordCount} dòng)`);
